@@ -1,0 +1,12 @@
+{
+  "name": "lizun",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-source dynamic island with installable widgets",
+  "scripts": {
+    "dev": "pnpm --filter @lizun/desktop tauri dev",
+    "build": "pnpm --filter @lizun/desktop tauri build",
+    "check": "pnpm -r check"
+  },
+  "packageManager": "pnpm@10.13.1"
+}
