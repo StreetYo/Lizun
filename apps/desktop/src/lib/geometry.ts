@@ -16,8 +16,7 @@ export const SHADOW_MARGIN = { side: 32, bottom: 44 };
 /** Extra hover area around the collapsed pill so it is easy to hit. */
 export const HOVER_MARGIN = 4;
 
-/** Delay before hovering opens the island, and before leaving closes it. */
-export const OPEN_DELAY_MS = 90;
+/** Delay before leaving closes the island. Opening waits for the user's hover delay preference. */
 export const CLOSE_DELAY_MS = 320;
 
 /** While the mini island is hidden, only this strip along the top edge reacts to the cursor,

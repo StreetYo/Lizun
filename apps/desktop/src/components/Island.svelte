@@ -11,7 +11,6 @@
     EXPANDED_RADIUS,
     HOT_ZONE_HEIGHT,
     HOVER_MARGIN,
-    OPEN_DELAY_MS,
     PILL_WIDTH,
     SHADOW_MARGIN,
     type IslandSize,
@@ -190,9 +189,13 @@
     mode = next;
   }
 
+  /** The island opens only once the cursor has stayed on it for the configured time; leaving
+   * earlier cancels it, so passing over the top edge does not open it by accident. */
   function pointerEnter(): void {
     clearTimeout(closeTimer);
-    if (mode === 'collapsed') openTimer = setTimeout(() => setMode('expanded'), OPEN_DELAY_MS);
+    if (mode === 'collapsed') {
+      openTimer = setTimeout(() => setMode('expanded'), preferences.value.openDelayMs);
+    }
   }
 
   function pointerLeave(): void {

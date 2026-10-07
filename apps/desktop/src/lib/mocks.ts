@@ -18,7 +18,7 @@ function sampleArtwork(): string {
 }
 
 const startedAt = Date.now();
-let mockPreferences: unknown = { islandVisibility: 'always', autoHideDelayMs: 1000 };
+let mockPreferences: unknown = { islandVisibility: 'always', autoHideDelayMs: 1000, openDelayMs: 100 };
 
 export async function mockInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   switch (command) {

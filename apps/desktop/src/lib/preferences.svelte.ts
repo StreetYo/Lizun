@@ -7,9 +7,11 @@ export interface Preferences {
   islandVisibility: IslandVisibility;
   /** How long the mini island stays in "hide after a delay" mode (200–10000 ms). */
   autoHideDelayMs: number;
+  /** How long the cursor has to stay on the island before it opens (0–2000 ms). */
+  openDelayMs: number;
 }
 
-const DEFAULTS: Preferences = { islandVisibility: 'always', autoHideDelayMs: 1000 };
+const DEFAULTS: Preferences = { islandVisibility: 'always', autoHideDelayMs: 1000, openDelayMs: 100 };
 
 /** Preferences shared by all windows; changes made anywhere arrive through an event. */
 class PreferencesStore {

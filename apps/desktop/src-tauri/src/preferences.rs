@@ -27,6 +27,8 @@ pub enum IslandVisibility {
 
 /// Allowed range for how long the mini island stays in auto-hide mode.
 pub const AUTO_HIDE_DELAY_MS: std::ops::RangeInclusive<u32> = 200..=10_000;
+/// Allowed range for how long the cursor has to stay on the island before it opens.
+pub const OPEN_DELAY_MS: std::ops::RangeInclusive<u32> = 0..=2_000;
 
 /// Unknown fields are ignored and missing ones take their defaults, so files written by other
 /// versions still load.
@@ -35,11 +37,14 @@ pub const AUTO_HIDE_DELAY_MS: std::ops::RangeInclusive<u32> = 200..=10_000;
 pub struct Preferences {
     pub island_visibility: IslandVisibility,
     pub auto_hide_delay_ms: u32,
+    /// How long the cursor has to stay on the island (or the top edge while it is hidden)
+    /// before it opens, so passing over it does not open it by accident.
+    pub open_delay_ms: u32,
 }
 
 impl Default for Preferences {
     fn default() -> Self {
-        Self { island_visibility: IslandVisibility::default(), auto_hide_delay_ms: 1000 }
+        Self { island_visibility: IslandVisibility::default(), auto_hide_delay_ms: 1000, open_delay_ms: 100 }
     }
 }
 
@@ -47,6 +52,7 @@ impl Preferences {
     fn clamped(mut self) -> Self {
         self.auto_hide_delay_ms =
             self.auto_hide_delay_ms.clamp(*AUTO_HIDE_DELAY_MS.start(), *AUTO_HIDE_DELAY_MS.end());
+        self.open_delay_ms = self.open_delay_ms.clamp(*OPEN_DELAY_MS.start(), *OPEN_DELAY_MS.end());
         self
     }
 }
@@ -104,23 +110,26 @@ mod tests {
         let empty: Preferences = serde_json::from_str("{}").unwrap();
         assert_eq!(empty, Preferences::default());
         assert_eq!(empty.auto_hide_delay_ms, 1000);
+        assert_eq!(empty.open_delay_ms, 100);
 
         let future: Preferences =
             serde_json::from_str(r#"{"islandVisibility":"autoHide","somethingNew":true}"#).unwrap();
         assert_eq!(future.island_visibility, IslandVisibility::AutoHide);
 
-        let hidden = Preferences { island_visibility: IslandVisibility::Hidden, auto_hide_delay_ms: 1500 };
+        let hidden =
+            Preferences { island_visibility: IslandVisibility::Hidden, auto_hide_delay_ms: 1500, open_delay_ms: 400 };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"islandVisibility":"hidden","autoHideDelayMs":1500}"#
+            r#"{"islandVisibility":"hidden","autoHideDelayMs":1500,"openDelayMs":400}"#
         );
     }
 
     #[test]
-    fn keeps_the_delay_in_range() {
-        let too_short = Preferences { auto_hide_delay_ms: 0, ..Preferences::default() };
-        let too_long = Preferences { auto_hide_delay_ms: 600_000, ..Preferences::default() };
-        assert_eq!(too_short.clamped().auto_hide_delay_ms, 200);
-        assert_eq!(too_long.clamped().auto_hide_delay_ms, 10_000);
+    fn keeps_the_delays_in_range() {
+        let too_short = Preferences { auto_hide_delay_ms: 0, open_delay_ms: 0, ..Preferences::default() }.clamped();
+        let too_long =
+            Preferences { auto_hide_delay_ms: 600_000, open_delay_ms: 600_000, ..Preferences::default() }.clamped();
+        assert_eq!((too_short.auto_hide_delay_ms, too_short.open_delay_ms), (200, 0));
+        assert_eq!((too_long.auto_hide_delay_ms, too_long.open_delay_ms), (10_000, 2_000));
     }
 }

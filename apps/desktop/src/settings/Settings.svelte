@@ -68,21 +68,27 @@
     }
   }
 
-  const MIN_DELAY_S = 0.2;
-  const MAX_DELAY_S = 10;
+  /** Allowed ranges in seconds; they match src-tauri/src/preferences.rs. */
+  const AUTO_HIDE_DELAY_S = { min: 0.2, max: 10 };
+  const OPEN_DELAY_S = { min: 0, max: 2 };
 
-  async function setDelay(event: Event): Promise<void> {
+  /** Saves a delay typed in seconds, clamped to its range; anything else restores the saved value. */
+  async function setDelay(
+    event: Event,
+    key: 'autoHideDelayMs' | 'openDelayMs',
+    range: { min: number; max: number },
+  ): Promise<void> {
     const input = event.currentTarget as HTMLInputElement;
     const seconds = Number.parseFloat(input.value.replace(',', '.'));
     if (!Number.isFinite(seconds)) {
-      input.value = String(preferences.value.autoHideDelayMs / 1000);
+      input.value = String(preferences.value[key] / 1000);
       return;
     }
-    const clamped = Math.min(MAX_DELAY_S, Math.max(MIN_DELAY_S, seconds));
+    const clamped = Math.min(range.max, Math.max(range.min, seconds));
     input.value = String(clamped);
     error = null;
     try {
-      await preferences.update({ autoHideDelayMs: Math.round(clamped * 1000) });
+      await preferences.update({ [key]: Math.round(clamped * 1000) });
     } catch (err) {
       error = `Could not save the setting: ${err}`;
     }
@@ -147,17 +153,19 @@
             <div class="row delay">
               <label class="text" for="auto-hide-delay">
                 <span class="label">Delay</span>
-                <span class="hint">How long the mini island stays, from {MIN_DELAY_S} to {MAX_DELAY_S} seconds.</span>
+                <span class="hint">
+                  How long the mini island stays, from {AUTO_HIDE_DELAY_S.min} to {AUTO_HIDE_DELAY_S.max} seconds.
+                </span>
               </label>
               <span class="field">
                 <input
                   id="auto-hide-delay"
                   type="number"
-                  min={MIN_DELAY_S}
-                  max={MAX_DELAY_S}
+                  min={AUTO_HIDE_DELAY_S.min}
+                  max={AUTO_HIDE_DELAY_S.max}
                   step="0.1"
                   value={preferences.value.autoHideDelayMs / 1000}
-                  onchange={setDelay}
+                  onchange={(event) => setDelay(event, 'autoHideDelayMs', AUTO_HIDE_DELAY_S)}
                 />
                 <span class="unit">s</span>
               </span>
@@ -209,6 +217,31 @@
                 </div>
               </div>
               <span class="badge">{widget.source === 'dev' ? 'Development' : widget.author || 'Installed'}</span>
+
+      <h2>Opening</h2>
+      <div class="card">
+        <div class="row">
+          <label class="text" for="open-delay">
+            <span class="label">Hover delay</span>
+            <span class="hint">
+              How long to hold the pointer at the top edge before the island opens, from {OPEN_DELAY_S.min} to
+              {OPEN_DELAY_S.max} seconds. A longer delay prevents accidental opens.
+            </span>
+          </label>
+          <span class="field">
+            <input
+              id="open-delay"
+              type="number"
+              min={OPEN_DELAY_S.min}
+              max={OPEN_DELAY_S.max}
+              step="0.05"
+              value={preferences.value.openDelayMs / 1000}
+              onchange={(event) => setDelay(event, 'openDelayMs', OPEN_DELAY_S)}
+            />
+            <span class="unit">s</span>
+          </span>
+        </div>
+      </div>
             </div>
           {/each}
         </div>
