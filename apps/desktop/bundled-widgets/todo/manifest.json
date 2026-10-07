@@ -1,0 +1,29 @@
+{
+  "id": "lizun.todo",
+  "name": "To-do",
+  "version": "1.0.0",
+  "author": "Lizun",
+  "description": "A short list of tasks at hand",
+  "entry": "index.html",
+  "width": 260,
+  "permissions": ["storage"],
+  "settings": [
+    {
+      "key": "completed",
+      "type": "select",
+      "label": "Completed tasks",
+      "default": "bottom",
+      "options": [
+        { "value": "inPlace", "label": "Keep in place" },
+        { "value": "bottom", "label": "Move to the bottom" },
+        { "value": "hidden", "label": "Hide" }
+      ]
+    },
+    {
+      "key": "newOnTop",
+      "type": "toggle",
+      "label": "Add new tasks to the top",
+      "default": false
+    }
+  ]
+}

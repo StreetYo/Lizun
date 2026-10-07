@@ -45,7 +45,8 @@
     "active": true,
     "targets": ["nsis"],
     "resources": {
-      "../../../packages/widget-sdk/dist/": "widget-sdk/"
+      "../../../packages/widget-sdk/dist/": "widget-sdk/",
+      "../bundled-widgets/": "bundled-widgets/"
     },
     "icon": [
       "icons/32x32.png",

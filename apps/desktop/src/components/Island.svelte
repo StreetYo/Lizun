@@ -2,6 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import { debug, frameStats } from '../lib/debug';
   import { fileTray } from '../lib/fileTray.svelte';
+  import { keyboard } from '../lib/keyboard.svelte';
   import {
     CLOSE_DELAY_MS,
     COLLAPSED_HEIGHT,
@@ -180,6 +181,19 @@
 
   let openTimer: ReturnType<typeof setTimeout> | undefined;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  let hovering = false;
+
+  // While a widget's text field has the keyboard the island stays open, even if the cursor
+  // leaves; once the keyboard is released it closes unless the cursor is over it.
+  $effect(() => {
+    const held = keyboard.held;
+    untrack(() => {
+      clearTimeout(closeTimer);
+      if (!held && !hovering && mode === 'expanded') {
+        closeTimer = setTimeout(() => setMode('collapsed'), CLOSE_DELAY_MS);
+      }
+    });
+  });
 
   function setMode(next: Mode): void {
     clearTimeout(openTimer);
@@ -187,6 +201,7 @@
     peekAfterClose = false;
     if (next === 'collapsed' && mode !== 'collapsed') {
       tab = 'widgets';
+      void keyboard.set(false);
       // "Hide after a delay": the panel closes into the mini island, which stays for the
       // configured time before going into the edge. "Hidden" goes straight into the edge.
       if (preferences.value.islandVisibility === 'autoHide') {
@@ -201,6 +216,7 @@
   /** The island opens only once the cursor has stayed on it for the configured time; leaving
    * earlier cancels it, so passing over the top edge does not open it by accident. */
   function pointerEnter(): void {
+    hovering = true;
     clearTimeout(closeTimer);
     if (mode === 'collapsed') {
       openTimer = setTimeout(() => setMode('expanded'), preferences.value.openDelayMs);
@@ -208,8 +224,9 @@
   }
 
   function pointerLeave(): void {
+    hovering = false;
     clearTimeout(openTimer);
-    if (mode === 'expanded') closeTimer = setTimeout(() => setMode('collapsed'), CLOSE_DELAY_MS);
+    if (mode === 'expanded' && !keyboard.held) closeTimer = setTimeout(() => setMode('collapsed'), CLOSE_DELAY_MS);
   }
 
   function zoneAt(x: number, y: number): string | null {
@@ -274,6 +291,7 @@
   onpointerenter={pointerEnter}
   onpointerleave={pointerLeave}
   onpointermove={() => clearTimeout(closeTimer)}
+  onpointerdown={() => void keyboard.set(false)}
   role="region"
   aria-label="Lizun"
 >

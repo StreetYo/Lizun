@@ -41,6 +41,9 @@
   let section = $state<Section>('general');
   let launchAtLogin = $state(false);
   let widgets = $state<WidgetManifest[]>([]);
+  // Widgets shipped with Lizun are listed with the other built-in ones.
+  const bundledWidgets = $derived(widgets.filter((widget) => widget.source === 'bundled'));
+  const installedWidgets = $derived(widgets.filter((widget) => widget.source !== 'bundled'));
   let info = $state<{ version: string; widgetsDir: string | null }>({ version: '', widgetsDir: null });
   let error = $state<string | null>(null);
 
@@ -181,6 +184,18 @@
     invoke('widgets_open_folder').catch((err) => (error = `Could not open the folder: ${err}`));
   }
 </script>
+
+{#snippet widgetSettingRows(widget: WidgetManifest)}
+  {#if widget.settings.length}
+    {@const values = widgetSettings.of(widget)}
+    {#each widget.settings as setting (setting.key)}
+      {@render settingRow(widget, setting, values[setting.key])}
+    {/each}
+    <div class="row setting reset">
+      <button class="link" onclick={() => resetWidgetSettings(widget)}>Reset to defaults</button>
+    </div>
+  {/if}
+{/snippet}
 
 {#snippet settingRow(widget: WidgetManifest, setting: SettingSpec, value: SettingValue)}
   {@const id = `setting-${widget.id}-${setting.key}`}
@@ -364,12 +379,22 @@
             <span class="badge">Built in</span>
           </div>
         {/each}
+        {#each bundledWidgets as widget (widget.id)}
+          <div class="row">
+            <div class="text">
+              <div class="label">{widget.name}</div>
+              <div class="hint">{widget.description}</div>
+            </div>
+            <span class="badge">Built in</span>
+          </div>
+          {@render widgetSettingRows(widget)}
+        {/each}
       </div>
 
       <h2>Installed</h2>
-      {#if widgets.length}
+      {#if installedWidgets.length}
         <div class="card">
-          {#each widgets as widget (widget.id)}
+          {#each installedWidgets as widget (widget.id)}
             <div class="row">
               <div class="text">
                 <div class="label">{widget.name} <span class="version">{widget.version}</span></div>
@@ -388,15 +413,7 @@
               </div>
               <span class="badge">{widget.source === 'dev' ? 'Development' : widget.author || 'Installed'}</span>
             </div>
-            {#if widget.settings.length}
-              {@const values = widgetSettings.of(widget)}
-              {#each widget.settings as setting (setting.key)}
-                {@render settingRow(widget, setting, values[setting.key])}
-              {/each}
-              <div class="row setting reset">
-                <button class="link" onclick={() => resetWidgetSettings(widget)}>Reset to defaults</button>
-              </div>
-            {/if}
+            {@render widgetSettingRows(widget)}
           {/each}
         </div>
       {:else}

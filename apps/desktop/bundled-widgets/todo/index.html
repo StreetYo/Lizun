@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="/__sdk/lizun.css" />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <main class="todo">
+      <header>
+        <span class="lz-title">To-do</span>
+        <span class="lz-secondary" id="left"></span>
+        <button class="clear" id="clear" hidden>Clear done</button>
+      </header>
+      <input id="add" type="text" maxlength="200" placeholder="Add a task" autocomplete="off" spellcheck="false" />
+      <ul id="list"></ul>
+      <p class="empty lz-secondary" id="empty" hidden>Nothing to do</p>
+    </main>
+  </body>
+</html>

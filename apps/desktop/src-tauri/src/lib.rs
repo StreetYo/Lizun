@@ -28,6 +28,7 @@ pub fn run() {
         .register_uri_scheme_protocol(widgets::SCHEME, widgets::serve)
         .invoke_handler(tauri::generate_handler![
             island::island_set_hit_region,
+            island::island_keyboard,
             media::media_snapshot,
             media::media_artwork,
             media::media_control,

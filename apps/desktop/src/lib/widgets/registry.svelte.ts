@@ -26,7 +26,7 @@ export interface WidgetManifest {
   permissions: string[];
   network: string[];
   settings: SettingSpec[];
-  source: 'dev' | 'user';
+  source: 'bundled' | 'dev' | 'user';
 }
 
 class WidgetRegistry {

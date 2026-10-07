@@ -64,7 +64,8 @@ fn default_width() -> u32 {
 pub struct InstalledWidget {
     #[serde(flatten)]
     pub manifest: WidgetManifest,
-    /// `dev` for widgets from the repository (debug builds only), `user` for installed ones.
+    /// `bundled` for widgets shipped with Lizun, `dev` for the repository's examples (debug
+    /// builds only), `user` for widgets the user installed.
     pub source: &'static str,
     #[serde(skip)]
     pub dir: PathBuf,
@@ -142,8 +143,14 @@ fn refresh<R: Runtime>(app: &AppHandle<R>) -> Vec<InstalledWidget> {
     found
 }
 
+/// Folders to scan, in priority order: a widget id found in an earlier folder cannot be taken
+/// by a widget in a later one, so an installed widget cannot replace a bundled one.
 fn widget_roots<R: Runtime>(app: &AppHandle<R>) -> Vec<(PathBuf, &'static str)> {
     let mut roots = Vec::new();
+    match bundled_dir(app) {
+        Some(bundled) => roots.push((bundled, "bundled")),
+        None => log::warn!("no resource directory for the bundled widgets"),
+    }
     if cfg!(debug_assertions) {
         roots.push((repo_path("widgets"), "dev"));
     }
@@ -157,6 +164,13 @@ fn widget_roots<R: Runtime>(app: &AppHandle<R>) -> Vec<(PathBuf, &'static str)> 
         None => log::warn!("no app data directory"),
     }
     roots
+}
+
+fn bundled_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        return Some(repo_path("apps/desktop/bundled-widgets"));
+    }
+    app.path().resource_dir().ok().map(|dir| dir.join("bundled-widgets"))
 }
 
 fn sdk_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
@@ -366,9 +380,13 @@ mod tests {
     }
 
     #[test]
-    fn example_widget_manifest_is_valid() {
+    fn example_and_bundled_manifests_are_valid() {
         let manifest = load_manifest(&repo_path("widgets/hello")).unwrap();
         assert_eq!(manifest.settings.len(), 4);
+        let bundled = fs::read_dir(repo_path("apps/desktop/bundled-widgets")).unwrap();
+        for dir in bundled.flatten() {
+            load_manifest(&dir.path()).unwrap_or_else(|err| panic!("{}: {err}", dir.path().display()));
+        }
     }
 
     #[test]

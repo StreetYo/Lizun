@@ -13,6 +13,16 @@ pub fn show_without_activation(window: &WebviewWindow) -> tauri::Result<()> {
     window.show()
 }
 
+pub fn take_keyboard(window: &WebviewWindow) -> tauri::Result<()> {
+    window.set_focus()
+}
+
+pub fn on_deactivated(_callback: impl Fn() + Send + Sync + 'static) {}
+
+pub fn release_keyboard(_window: &WebviewWindow) -> tauri::Result<()> {
+    Ok(())
+}
+
 pub fn set_hit_region(_window: &WebviewWindow, _rects: &[Rect], _scale: f64) -> tauri::Result<()> {
     Ok(())
 }

@@ -144,6 +144,27 @@ The example widget in `widgets/hello` declares one setting of each type.
 
 Lizun builds that predate settings reject a manifest with a `settings` field.
 
+## Text input
+
+The island never takes the keyboard on its own, so the app you work in keeps it. The SDK
+changes that only while a text field in the widget is in use: clicking an `<input>`,
+`<textarea>` or `contenteditable` element brings the island to the foreground, and it stays
+open even if the cursor leaves. The keyboard goes back to the previously active window when
+the field loses focus, when Esc is pressed in it, or when the user clicks anything else.
+Nothing needs to be declared for this.
+
+To hand the keyboard back yourself, for example after a form is submitted:
+
+```js
+import { keyboard } from '/__sdk/index.js';
+
+keyboard.release();
+```
+
+The bundled To-do widget (`apps/desktop/bundled-widgets/todo`) is a complete example: Enter adds
+a task and keeps the field ready for the next one, Enter in an empty field gives the keyboard
+back. Why the island works this way is in [ADR 0003](adr/0003-keyboard-on-demand.md).
+
 ## Sandbox
 
 The iframe has an opaque origin, so a widget cannot read the island page, cookies or
@@ -154,3 +175,7 @@ and `/__sdk/`; inline scripts are blocked. Network requests are limited to `netw
 
 Put the folder in `%APPDATA%\app.lizun.desktop\widgets\` and reopen the island. In development
 builds, widgets in the repository's `widgets/` folder are loaded too.
+
+Widgets that ship with Lizun live in `apps/desktop/bundled-widgets/` and are copied into the
+app's resources. They use the same SDK and sandbox as installed widgets and are listed with the
+built-in ones in Settings. An installed widget cannot take the id of a bundled one.

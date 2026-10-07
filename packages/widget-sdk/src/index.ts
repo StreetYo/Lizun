@@ -102,9 +102,78 @@ function on<T>(name: string, listener: (payload: T) => void): () => void {
   return () => set.delete(wrapped);
 }
 
-/** Connects to the island and applies its theme as `--lz-*` CSS variables. Call it first. */
+const NOT_TEXT_INPUTS = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+
+function isTextField(element: EventTarget | null): element is HTMLElement {
+  if (element instanceof HTMLTextAreaElement) return !element.readOnly && !element.disabled;
+  if (element instanceof HTMLInputElement) {
+    return !element.readOnly && !element.disabled && !NOT_TEXT_INPUTS.has(element.type);
+  }
+  return element instanceof HTMLElement && element.isContentEditable;
+}
+
+/**
+ * The island never takes the keyboard on its own, so typing would go to the app behind it. While
+ * a text field in the widget is in use, the island is asked for the keyboard; when the field
+ * loses focus (or Esc is pressed in it), the focus goes back to the previously active window.
+ */
+/** The text field this widget holds the keyboard for. */
+let keyboardField: HTMLElement | null = null;
+
+function takeKeyboard(field: HTMLElement): void {
+  keyboardField = field;
+  call('keyboard.set', { take: true }).catch((error) => console.warn('[lizun] no keyboard:', error));
+}
+
+function releaseKeyboard(): void {
+  if (!keyboardField) return;
+  const field = keyboardField;
+  keyboardField = null;
+  if (document.activeElement === field) field.blur();
+  call('keyboard.set', { take: false }).catch(() => {});
+}
+
+function manageKeyboard(): void {
+  document.addEventListener(
+    'pointerdown',
+    (event) => (isTextField(event.target) ? takeKeyboard(event.target) : releaseKeyboard()),
+    true,
+  );
+  document.addEventListener('focusin', (event) => isTextField(event.target) && takeKeyboard(event.target));
+  // The field keeps being the active element when the whole window loses focus; the island
+  // handles that case itself.
+  document.addEventListener('focusout', () => {
+    setTimeout(() => !isTextField(document.activeElement) && releaseKeyboard());
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !event.defaultPrevented && isTextField(event.target)) releaseKeyboard();
+  });
+  // The island gave the keyboard back on its own, for example when another app was clicked.
+  on('keyboard.released', () => {
+    const field = keyboardField;
+    keyboardField = null;
+    field?.blur();
+  });
+  // Clicking a field focuses it before the island has the keyboard; focus it again once it has.
+  on('keyboard.granted', () => {
+    if (keyboardField?.isConnected && document.activeElement !== keyboardField) keyboardField.focus();
+  });
+}
+
+/** Keyboard focus while a text field is in use; see `ready()`. */
+export const keyboard = {
+  /** Leaves the text field and gives the focus back to the app the user was working in. */
+  release: releaseKeyboard,
+};
+
+/**
+ * Connects to the island and applies its theme as `--lz-*` CSS variables. Call it first.
+ * Text fields in the widget get the keyboard while they are in use; pressing Esc in one gives
+ * the focus back to the app the user was working in.
+ */
 export async function ready(): Promise<WidgetContext> {
   const context = await call<WidgetContext>('lizun.handshake');
+  manageKeyboard();
   const style = document.documentElement.style;
   const theme = context.theme;
   style.setProperty('--lz-bg', theme.background);

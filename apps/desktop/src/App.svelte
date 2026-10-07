@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Island from './components/Island.svelte';
   import { fileTray } from './lib/fileTray.svelte';
+  import { keyboard } from './lib/keyboard.svelte';
   import { isTauri, listen } from './lib/platform';
   import { media } from './lib/media.svelte';
   import { preferences } from './lib/preferences.svelte';
@@ -15,6 +16,7 @@
     void fileTray.restore();
     void widgetRegistry.load();
     void widgetSettings.start();
+    void keyboard.start();
     // The settings window reloads widgets after the user adds or removes one.
     const stop = listen('widgets://changed', () => {
       void widgetRegistry.load();

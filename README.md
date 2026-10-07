@@ -1,8 +1,8 @@
 # Lizun
 
 An open-source "dynamic island" for the desktop: a black island at the top of the screen that
-opens on hover and holds widgets: now playing, a file tray, a calendar, a camera mirror, and
-widgets anyone can write and install.
+opens on hover and holds widgets: now playing, a file tray, a calendar, a camera mirror, a to-do
+list, and widgets anyone can write and install.
 
 > Status: early prototype. Windows works; macOS is planned (see [ADR 0001](docs/adr/0001-stack.md)).
 
@@ -11,7 +11,9 @@ widgets anyone can write and install.
 - Collapsed pill with live activities (cover art and equalizer for the current track, file count).
 - Hover to open: spring animation with a content blur-in, closes when the cursor leaves.
 - Never steals focus, stays out of Alt+Tab and the taskbar; clicks outside the island go to the
-  windows below.
+  windows below. The only exception is typing into a widget's text field, after which the
+  focus goes back to your app.
+- To-do list, written on the widget SDK and shipped with the app.
 - Now playing for any app in the Windows media flyout (Spotify, browsers, Telegram, ...), with
   play/pause/next/previous.
 - File tray: drag files from Explorer onto the island, drag them back out into any app.

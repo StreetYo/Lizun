@@ -3,9 +3,11 @@
 //! falls through to the windows below.
 
 use serde::Deserialize;
-use tauri::{App, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+use tauri::{App, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 pub const ISLAND_LABEL: &str = "island";
+/// Sent to the island page when its window stops being the active one.
+const EVENT_DEACTIVATED: &str = "island://deactivated";
 
 /// Height of the overlay strip in logical pixels. It must fit the tallest expanded state
 /// together with its drop shadow.
@@ -23,6 +25,12 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
         .expect("the island window is declared in tauri.conf.json");
     place_on_primary_monitor(&window)?;
     crate::platform::prepare_island_window(&window)?;
+    let app_handle = app.handle().clone();
+    crate::platform::on_deactivated(move || {
+        if let Err(err) = app_handle.emit_to(ISLAND_LABEL, EVENT_DEACTIVATED, ()) {
+            log::warn!("failed to announce that the island lost focus: {err}");
+        }
+    });
 
     let scale = window.scale_factor()?;
     let width = f64::from(window.outer_size()?.width) / scale;
@@ -51,6 +59,19 @@ pub struct Rect {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+/// Gives the island the keyboard while a text field in it is in use (`take: true`), and hands
+/// the focus back to the previously active window afterwards. The rest of the time the island
+/// never takes focus. Synchronous, so it runs on the main thread like the hit region.
+#[tauri::command]
+pub fn island_keyboard(window: tauri::WebviewWindow, take: bool) -> Result<(), String> {
+    let result = if take {
+        crate::platform::take_keyboard(&window)
+    } else {
+        crate::platform::release_keyboard(&window)
+    };
+    result.map_err(|e| e.to_string())
 }
 
 /// Replaces the interactive area of the island window. This is a synchronous command, so it

@@ -1,0 +1,138 @@
+.todo {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding-top: 4px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.clear {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--lz-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.clear:hover {
+  color: var(--lz-text);
+}
+
+#add {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--lz-card);
+  color: var(--lz-text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+#add::placeholder {
+  color: var(--lz-text-tertiary);
+}
+
+#add:focus {
+  border-color: var(--lz-accent);
+}
+
+#list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: none;
+  mask-image: linear-gradient(#000 calc(100% - 14px), transparent);
+}
+
+.task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 2px;
+}
+
+.check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1.5px solid var(--lz-text-tertiary);
+  border-radius: 50%;
+  background: none;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.check:hover {
+  border-color: var(--lz-text-secondary);
+}
+
+.done .check {
+  border-color: var(--lz-accent);
+  background: var(--lz-accent);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.done .text {
+  color: var(--lz-text-tertiary);
+  text-decoration: line-through;
+}
+
+.remove {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--lz-text-tertiary);
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0;
+}
+
+.task:hover .remove {
+  opacity: 1;
+}
+
+.remove:hover {
+  color: var(--lz-text);
+  background: var(--lz-card-raised);
+}
+
+.empty {
+  margin: 0;
+  padding: 0 2px;
+}

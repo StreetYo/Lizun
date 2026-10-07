@@ -5,6 +5,7 @@
  * manifest before anything is done on its behalf.
  */
 import { debug } from '../debug';
+import { keyboard } from '../keyboard.svelte';
 import { media, type MediaCommand } from '../media.svelte';
 import type { WidgetManifest } from './registry.svelte';
 import { widgetSettings } from './settings.svelte';
@@ -75,6 +76,14 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
       localStorage.setItem(storageKey(widget, params.key), raw);
     },
   },
+  // Sent by the SDK when a text field in the widget gains or loses focus; needs no permission.
+  'keyboard.set': {
+    handler: async (frame, params) => {
+      const take = params.take === true;
+      await keyboard.set(take);
+      if (take) send(frame, { kind: 'event', name: 'keyboard.granted', payload: null });
+    },
+  },
   'debug.report': {
     handler: ({ widget }, params) => {
       debug.widgetReports[widget.id] = params;
@@ -141,6 +150,11 @@ export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest):
       for (const frame of frames.values()) {
         if (frame.mediaSubscribed) send(frame, { kind: 'event', name: 'media.changed', payload });
       }
+    });
+    // The widget's text field no longer has the keyboard, for example because the user clicked
+    // another app; the SDK leaves the field so the next click takes the keyboard again.
+    keyboard.onRelease(() => {
+      for (const frame of frames.values()) send(frame, { kind: 'event', name: 'keyboard.released', payload: null });
     });
     widgetSettings.onChange((widgetId) => {
       for (const frame of frames.values()) {
