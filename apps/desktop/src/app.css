@@ -1,0 +1,48 @@
+/* Design tokens measured from the reference recording (see docs/reference/visual-spec.md). */
+:root {
+  --island-bg: #000;
+  --card: #1c1b1f;
+  --card-raised: #26252a;
+  --divider: rgba(255, 255, 255, 0.07);
+  --text: #f5f5f7;
+  --text-secondary: #8e8d93;
+  --text-tertiary: #5a5960;
+  --accent: #0a84ff;
+  --accent-deep: #072038;
+  --danger: #ff453a;
+  --font: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* Outside Tauri the island is previewed over a wallpaper-like background. */
+body.preview {
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 75%, #6a2bc4 0%, transparent 70%),
+    linear-gradient(160deg, #3b1585 0%, #5a22b8 45%, #2a0f63 100%);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
