@@ -9,10 +9,10 @@ uses logical pixels with the same proportions.
 | State | Size | Corners |
 |---|---|---|
 | Collapsed with live activity | ~358 x 36 | flush with the top edge, rounded bottom |
-| Open (Nook tab) | full width x ~260 | large bottom radius |
+| Open (widgets tab) | full width x ~260 | large bottom radius |
 | Drag over (Files Tray + AirDrop zones) | ~810 x ~200 | large bottom radius, soft shadow |
 
-The Tray tab keeps the width of the Nook tab.
+The Tray tab keeps the width of the widgets tab.
 
 ## Motion
 
@@ -36,7 +36,7 @@ The Tray tab keeps the width of the Nook tab.
 
 ## Layout notes
 
-- Header: `Nook` / `Tray` pill tabs on the left, settings gear on the right.
+- Header: two pill tabs (widgets, tray) on the left, settings gear on the right.
 - Widgets in one row separated by thin vertical dividers: media (cover, title, artist,
   controls, progress with times), mirror (circle), calendar (month, week strip with today in
   accent, events), notes, timers, tasks.

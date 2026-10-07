@@ -1,23 +1,23 @@
 <script lang="ts">
   import GearSix from 'phosphor-svelte/lib/GearSix';
-  import MagicWand from 'phosphor-svelte/lib/MagicWand';
+  import SquaresFour from 'phosphor-svelte/lib/SquaresFour';
   import Tray from 'phosphor-svelte/lib/Tray';
   import { invoke } from '../lib/platform';
-  import NookView from './NookView.svelte';
   import TrayView from './TrayView.svelte';
+  import WidgetsView from './WidgetsView.svelte';
 
-  let { tab = $bindable('nook') }: { tab: 'nook' | 'tray' } = $props();
+  let { tab = $bindable('widgets') }: { tab: 'widgets' | 'tray' } = $props();
 
   // The tray takes the width of the widget row, so switching tabs does not shrink the island
   // out from under the cursor.
-  let nookWidth = $state(0);
+  let widgetsWidth = $state(0);
 </script>
 
 <div class="panel">
   <header>
     <div class="tabs">
-      <button class:active={tab === 'nook'} onclick={() => (tab = 'nook')}>
-        <MagicWand size={14} weight="fill" /> Nook
+      <button class:active={tab === 'widgets'} onclick={() => (tab = 'widgets')}>
+        <SquaresFour size={14} weight="fill" /> Widgets
       </button>
       <button class:active={tab === 'tray'} onclick={() => (tab = 'tray')}>
         <Tray size={14} weight="fill" /> Tray
@@ -31,10 +31,10 @@
       <GearSix size={17} weight="fill" />
     </button>
   </header>
-  {#if tab === 'nook'}
-    <div bind:clientWidth={nookWidth}><NookView /></div>
+  {#if tab === 'widgets'}
+    <div bind:clientWidth={widgetsWidth}><WidgetsView /></div>
   {:else}
-    <TrayView width={nookWidth} />
+    <TrayView width={widgetsWidth} />
   {/if}
 </div>
 

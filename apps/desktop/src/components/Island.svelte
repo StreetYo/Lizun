@@ -26,7 +26,7 @@
   type Mode = 'collapsed' | 'expanded' | 'dropping';
 
   let mode = $state<Mode>('collapsed');
-  let tab = $state<'nook' | 'tray'>('nook');
+  let tab = $state<'widgets' | 'tray'>('widgets');
   let dropZone = $state<string | null>(null);
   let panelSize = $state({ width: 640, height: 220 });
   let island: HTMLDivElement;
@@ -115,7 +115,7 @@
   function setMode(next: Mode): void {
     clearTimeout(openTimer);
     clearTimeout(closeTimer);
-    if (next === 'collapsed') tab = 'nook';
+    if (next === 'collapsed') tab = 'widgets';
     mode = next;
   }
 
