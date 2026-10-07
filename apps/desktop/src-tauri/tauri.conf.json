@@ -1,0 +1,58 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Lizun",
+  "version": "0.1.0",
+  "identifier": "app.lizun.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm --filter @lizun/widget-sdk build && pnpm dev",
+    "beforeBuildCommand": "pnpm --filter @lizun/widget-sdk build && pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "island",
+        "title": "Lizun",
+        "url": "index.html",
+        "x": 0,
+        "y": 0,
+        "width": 1200,
+        "height": 420,
+        "transparent": true,
+        "noRedirectionBitmap": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "focus": false,
+        "focusable": false,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {
+      "../../../packages/widget-sdk/dist/": "widget-sdk/"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
