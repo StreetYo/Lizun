@@ -54,15 +54,24 @@
     return visibility === 'hidden' || (visibility === 'autoHide' && !peeking);
   });
 
-  // What the mini island announces: a new track, play/pause, files added to the tray.
-  const activity = $derived(
-    [media.nowPlaying?.title, media.nowPlaying?.artist, media.nowPlaying?.playing, fileTray.files.length].join('|'),
+  // What the mini island announces: files added to the tray and, unless turned off in the
+  // settings, a new track, play or pause.
+  const trayActivity = $derived(fileTray.files.length);
+  const mediaActivity = $derived(
+    [media.nowPlaying?.title, media.nowPlaying?.artist, media.nowPlaying?.playing].join('|'),
   );
 
   $effect(() => {
-    void activity;
+    void trayActivity;
     void preferences.value.islandVisibility;
     untrack(peek);
+  });
+
+  $effect(() => {
+    void mediaActivity;
+    untrack(() => {
+      if (preferences.value.showOnMediaChange) peek();
+    });
   });
 
   const hasActivity = $derived(media.nowPlaying !== null || fileTray.files.length > 0);

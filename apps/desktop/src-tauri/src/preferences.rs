@@ -39,6 +39,8 @@ pub const BROWSER_MEDIA_PORTS: std::ops::RangeInclusive<u16> = 1024..=65_535;
 pub struct Preferences {
     pub island_visibility: IslandVisibility,
     pub auto_hide_delay_ms: u32,
+    /// In auto-hide mode, show the mini island when a track starts, pauses or changes.
+    pub show_on_media_change: bool,
     /// How long the cursor has to stay on the island (or the top edge while it is hidden)
     /// before it opens, so passing over it does not open it by accident.
     pub open_delay_ms: u32,
@@ -53,6 +55,7 @@ impl Default for Preferences {
         Self {
             island_visibility: IslandVisibility::default(),
             auto_hide_delay_ms: 1000,
+            show_on_media_change: true,
             open_delay_ms: 100,
             browser_media: true,
             browser_media_port: crate::browser::DEFAULT_PORT,
@@ -130,6 +133,7 @@ mod tests {
         assert_eq!(empty, Preferences::default());
         assert_eq!(empty.auto_hide_delay_ms, 1000);
         assert_eq!(empty.open_delay_ms, 100);
+        assert!(empty.show_on_media_change);
 
         let future: Preferences =
             serde_json::from_str(r#"{"islandVisibility":"autoHide","somethingNew":true}"#).unwrap();
@@ -140,13 +144,14 @@ mod tests {
         let hidden = Preferences {
             island_visibility: IslandVisibility::Hidden,
             auto_hide_delay_ms: 1500,
+            show_on_media_change: false,
             open_delay_ms: 400,
             browser_media: false,
             browser_media_port: 7000,
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"islandVisibility":"hidden","autoHideDelayMs":1500,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000}"#
+            r#"{"islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000}"#
         );
     }
 

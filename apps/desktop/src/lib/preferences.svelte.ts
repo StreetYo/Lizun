@@ -7,6 +7,8 @@ export interface Preferences {
   islandVisibility: IslandVisibility;
   /** How long the mini island stays in "hide after a delay" mode (200–10000 ms). */
   autoHideDelayMs: number;
+  /** In "hide after a delay" mode, show the mini island when a track starts, pauses or changes. */
+  showOnMediaChange: boolean;
   /** How long the cursor has to stay on the island before it opens (0–2000 ms). */
   openDelayMs: number;
   /** Accept media from the Lizun browser extension. */
@@ -18,6 +20,7 @@ export interface Preferences {
 const DEFAULTS: Preferences = {
   islandVisibility: 'always',
   autoHideDelayMs: 1000,
+  showOnMediaChange: true,
   openDelayMs: 100,
   browserMedia: true,
   browserMediaPort: 6869,

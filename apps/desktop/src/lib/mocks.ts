@@ -21,6 +21,7 @@ const startedAt = Date.now();
 let mockPreferences: unknown = {
   islandVisibility: 'always',
   autoHideDelayMs: 1000,
+  showOnMediaChange: true,
   openDelayMs: 100,
   browserMedia: true,
   browserMediaPort: 6869,

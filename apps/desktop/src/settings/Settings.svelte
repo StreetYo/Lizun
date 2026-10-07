@@ -100,10 +100,10 @@
   /** Allowed port range; it matches src-tauri/src/preferences.rs. */
   const PORTS = { min: 1024, max: 65535 };
 
-  async function toggleBrowserMedia(): Promise<void> {
+  async function toggle(key: 'browserMedia' | 'showOnMediaChange'): Promise<void> {
     error = null;
     try {
-      await preferences.update({ browserMedia: !preferences.value.browserMedia });
+      await preferences.update({ [key]: !preferences.value[key] });
     } catch (err) {
       error = `Could not save the setting: ${err}`;
     }
@@ -213,6 +213,20 @@
                 <span class="unit">s</span>
               </span>
             </div>
+            <div class="row delay">
+              <div class="text">
+                <div class="label">Show on music changes</div>
+                <div class="hint">The mini island appears when a track starts, pauses or changes.</div>
+              </div>
+              <button
+                class="switch"
+                class:on={preferences.value.showOnMediaChange}
+                role="switch"
+                aria-checked={preferences.value.showOnMediaChange}
+                aria-label="Show on music changes"
+                onclick={() => toggle('showOnMediaChange')}
+              ><span></span></button>
+            </div>
           {/if}
         {/each}
       </div>
@@ -312,7 +326,7 @@
             role="switch"
             aria-checked={preferences.value.browserMedia}
             aria-label="Browser media"
-            onclick={toggleBrowserMedia}
+            onclick={() => toggle('browserMedia')}
           ><span></span></button>
         </div>
         {#if preferences.value.browserMedia}
