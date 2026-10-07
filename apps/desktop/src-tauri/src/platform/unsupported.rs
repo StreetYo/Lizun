@@ -17,6 +17,10 @@ pub fn set_hit_region(_window: &WebviewWindow, _rects: &[Rect], _scale: f64) -> 
     Ok(())
 }
 
+pub fn reveal_folder(_path: &std::path::Path) -> std::io::Result<()> {
+    Err(std::io::Error::other("opening folders is not supported on this platform yet"))
+}
+
 pub struct MediaController;
 
 impl MediaController {

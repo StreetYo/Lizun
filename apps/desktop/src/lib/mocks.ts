@@ -39,7 +39,10 @@ export async function mockInvoke<T>(command: string, _args?: Record<string, unkn
     case 'media_artwork':
       return sampleArtwork() as T;
     case 'widgets_list':
+    case 'widgets_reload':
       return [] as T;
+    case 'app_info':
+      return { version: 'preview', widgetsDir: null } as T;
     default:
       return undefined as T;
   }

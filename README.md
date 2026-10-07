@@ -16,7 +16,9 @@ widgets anyone can write and install.
   play/pause/next/previous.
 - File tray: drag files from Explorer onto the island, drag them back out into any app.
 - Third-party widgets in a sandbox, with a permission manifest (see [docs/widgets.md](docs/widgets.md)).
-- Tray icon to hide the island or quit.
+- Settings window (gear in the island or the tray menu): launch at login, installed widgets
+  with their permissions, the widgets folder, quit.
+- Tray icon to open settings, hide the island or quit.
 
 ## Development
 

@@ -2,6 +2,7 @@ mod file_tray;
 mod island;
 mod media;
 mod platform;
+mod settings;
 mod system_tray;
 mod widgets;
 
@@ -10,6 +11,7 @@ pub fn run() {
     tauri::Builder::default()
         // Registered first so that a second launch exits before it creates another island.
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_drag::init())
         .plugin(
             tauri_plugin_log::Builder::default()
@@ -28,6 +30,11 @@ pub fn run() {
             media::media_control,
             file_tray::file_tray_allow,
             widgets::widgets_list,
+            widgets::widgets_reload,
+            widgets::widgets_open_folder,
+            settings::settings_open,
+            settings::app_info,
+            settings::app_quit,
         ])
         .setup(|app| {
             widgets::init(app.handle());

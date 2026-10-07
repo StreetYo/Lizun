@@ -2,6 +2,7 @@
   import GearSix from 'phosphor-svelte/lib/GearSix';
   import MagicWand from 'phosphor-svelte/lib/MagicWand';
   import Tray from 'phosphor-svelte/lib/Tray';
+  import { invoke } from '../lib/platform';
   import NookView from './NookView.svelte';
   import TrayView from './TrayView.svelte';
 
@@ -22,7 +23,11 @@
         <Tray size={14} weight="fill" /> Tray
       </button>
     </div>
-    <button class="settings" title="Settings">
+    <button
+      class="settings"
+      title="Settings"
+      onclick={() => invoke('settings_open').catch((err) => console.warn('settings', err))}
+    >
       <GearSix size={17} weight="fill" />
     </button>
   </header>

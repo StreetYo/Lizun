@@ -14,9 +14,11 @@ use std::sync::RwLock;
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use tauri::http::{Request, Response, StatusCode, header};
-use tauri::{AppHandle, Manager, Runtime, UriSchemeContext};
+use tauri::{AppHandle, Emitter, Manager, Runtime, UriSchemeContext};
 
 pub const SCHEME: &str = "lizun-widget";
+/// Sent to every window after the widget list was reloaded.
+pub const EVENT_CHANGED: &str = "widgets://changed";
 /// Path prefix for files shared by all widgets: the SDK module and the base stylesheet.
 const SDK_PREFIX: &str = "__sdk";
 const MANIFEST_FILE: &str = "manifest.json";
@@ -80,6 +82,28 @@ pub fn widgets_list(app: AppHandle) -> Vec<InstalledWidget> {
     refresh(&app)
 }
 
+/// Rescans the widget folders and tells the island to pick up the changes.
+#[tauri::command]
+pub fn widgets_reload(app: AppHandle) -> Vec<InstalledWidget> {
+    let widgets = refresh(&app);
+    if let Err(err) = app.emit(EVENT_CHANGED, ()) {
+        log::warn!("failed to announce the widget reload: {err}");
+    }
+    widgets
+}
+
+/// Opens the folder where users put their widgets.
+#[tauri::command]
+pub fn widgets_open_folder(app: AppHandle) -> Result<(), String> {
+    let dir = user_widgets_dir(&app).ok_or("no widgets folder")?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    crate::platform::reveal_folder(&dir).map_err(|e| e.to_string())
+}
+
+pub fn user_widgets_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|dir| dir.join("widgets"))
+}
+
 fn refresh<R: Runtime>(app: &AppHandle<R>) -> Vec<InstalledWidget> {
     let mut found: Vec<InstalledWidget> = Vec::new();
     for (root, source) in widget_roots(app) {
@@ -107,15 +131,14 @@ fn widget_roots<R: Runtime>(app: &AppHandle<R>) -> Vec<(PathBuf, &'static str)> 
     if cfg!(debug_assertions) {
         roots.push((repo_path("widgets"), "dev"));
     }
-    match app.path().app_data_dir() {
-        Ok(data) => {
-            let user = data.join("widgets");
+    match user_widgets_dir(app) {
+        Some(user) => {
             if let Err(err) = fs::create_dir_all(&user) {
                 log::warn!("cannot create {}: {err}", user.display());
             }
             roots.push((user, "user"));
         }
-        Err(err) => log::warn!("no app data directory: {err}"),
+        None => log::warn!("no app data directory"),
     }
     roots
 }
