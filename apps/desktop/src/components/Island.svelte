@@ -7,8 +7,8 @@
     CLOSE_DELAY_MS,
     COLLAPSED_HEIGHT,
     COLLAPSED_RADIUS,
+    CAPSULE_MIN_WIDTH,
     DROP_SIZE,
-    EAR_WIDTH,
     EXPANDED_RADIUS,
     HOT_ZONE_HEIGHT,
     HOVER_MARGIN,
@@ -17,6 +17,7 @@
     type IslandSize,
   } from '../lib/geometry';
   import { media } from '../lib/media.svelte';
+  import { miniIsland } from '../lib/miniIsland.svelte';
   import { onFileDrag, setHitRegion } from '../lib/platform';
   import { preferences } from '../lib/preferences.svelte';
   import { CLOSE_SPRING, OPEN_SPRING, Spring } from '../lib/spring';
@@ -31,6 +32,7 @@
   let tab = $state<'widgets' | 'tray'>('widgets');
   let dropZone = $state<string | null>(null);
   let panelSize = $state({ width: 640, height: 220 });
+  let capsuleWidth = $state(0);
   let island: HTMLDivElement;
 
   let peeking = $state(true);
@@ -45,25 +47,31 @@
     peekTimer = setTimeout(() => (peeking = false), preferences.value.autoHideDelayMs);
   }
 
-  /** The closed island is pulled into the top edge (zero height). Pointing at the edge still
-   * opens it, and it then grows straight out of the edge without showing the mini island. */
+  const hasActivity = $derived(miniIsland.content !== null);
+
+  /** The closed island is pulled into the top edge (zero height) when it has nothing to show or
+   * the settings hide it. Pointing at the edge still opens it, and it then grows straight out of
+   * the edge without showing the mini island. */
   const concealed = $derived.by(() => {
     if (mode !== 'collapsed') return false;
     // Stay in the edge until the setting is known, so "Hidden" never flashes the island.
-    if (!preferences.loaded) return true;
+    if (!preferences.loaded || !hasActivity) return true;
     const visibility = preferences.value.islandVisibility;
     return visibility === 'hidden' || (visibility === 'autoHide' && !peeking);
   });
 
-  // What the mini island announces: files added to the tray and, unless turned off in the
-  // settings, a new track, play or pause.
+  // What the mini island announces: files added to the tray, a widget's activity coming up
+  // and, unless turned off in the settings, a new track, play or pause. A widget updating its
+  // activity (a timer ticking, a count changing) does not bring the island out.
   const trayActivity = $derived(fileTray.files.length);
+  const widgetActivity = $derived(miniIsland.content?.kind === 'widget' ? miniIsland.content.widgetId : '');
   const mediaActivity = $derived(
     [media.nowPlaying?.title, media.nowPlaying?.artist, media.nowPlaying?.playing].join('|'),
   );
 
   $effect(() => {
     void trayActivity;
+    void widgetActivity;
     void preferences.value.islandVisibility;
     untrack(peek);
   });
@@ -75,12 +83,11 @@
     });
   });
 
-  const hasActivity = $derived(media.nowPlaying !== null || fileTray.files.length > 0);
   const target: IslandSize = $derived.by(() => {
     if (mode === 'expanded') return { ...panelSize, radius: EXPANDED_RADIUS };
     if (mode === 'dropping') return { ...DROP_SIZE, radius: EXPANDED_RADIUS };
-    const width = hasActivity ? PILL_WIDTH + 2 * EAR_WIDTH : PILL_WIDTH;
-    if (concealed) return { width, height: 0, radius: 0 };
+    if (concealed) return { width: PILL_WIDTH, height: 0, radius: 0 };
+    const width = Math.max(CAPSULE_MIN_WIDTH, Math.ceil(capsuleWidth));
     return { width, height: COLLAPSED_HEIGHT, radius: COLLAPSED_RADIUS };
   });
 
@@ -300,7 +307,7 @@
   {/if}
   <div class="island" bind:this={island}>
     <div class="layer live" class:visible={mode === 'collapsed' && !concealed}>
-      <LiveActivity active={mode === 'collapsed' && !concealed} />
+      <LiveActivity active={mode === 'collapsed' && !concealed} bind:width={capsuleWidth} />
     </div>
     <div
       class="layer centered"

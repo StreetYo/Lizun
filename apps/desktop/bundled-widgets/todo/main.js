@@ -1,4 +1,4 @@
-import { keyboard, ready, settings, storage } from '/__sdk/index.js';
+import { activity, keyboard, ready, settings, storage } from '/__sdk/index.js';
 
 /** Keeps the stored list well under the 64 KB limit of one storage value. */
 const MAX_TASKS = 200;
@@ -12,6 +12,8 @@ const empty = document.getElementById('empty');
 /** @type {{ text: string, done: boolean }[]} */
 let tasks = [];
 let options;
+/** Color for secondary text, from the island theme. */
+let secondary;
 
 function save() {
   storage.set('tasks', tasks).catch((error) => console.warn('could not save the tasks', error));
@@ -24,7 +26,29 @@ function visibleTasks() {
   return tasks;
 }
 
+/** What the closed island shows, to skip sending the same activity again. */
+let shownActivity;
+
+/** The next open task in the closed island, and how many more are left. */
+function showActivity() {
+  const open = tasks.filter((task) => !task.done);
+  const next =
+    options.showInIsland && open.length
+      ? {
+          leading: { icon: 'list-checks' },
+          title: open[0].text.slice(0, 100),
+          trailing: open.length > 1 ? { text: `+${open.length - 1}`, color: secondary } : undefined,
+        }
+      : null;
+  const key = JSON.stringify(next);
+  if (key === shownActivity) return;
+  shownActivity = key;
+  const update = next ? activity.set(next) : activity.clear();
+  update.catch((error) => console.warn('could not update the live activity', error));
+}
+
 function render() {
+  showActivity();
   const open = tasks.filter((task) => !task.done).length;
   const done = tasks.length - open;
   left.textContent = tasks.length ? `${open} left` : '';
@@ -98,6 +122,7 @@ clear.addEventListener('click', () => {
 
 const context = await ready();
 options = context.settings;
+secondary = context.theme.textSecondary;
 settings.subscribe((next) => {
   options = next;
   render();

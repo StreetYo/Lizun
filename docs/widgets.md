@@ -32,7 +32,7 @@ my-widget/
 | `id` | 3–64 lowercase letters, digits, dots or dashes. Unique. |
 | `entry` | HTML file to load (default `index.html`). |
 | `width` | Column width in logical pixels, 120–640 (default 240). |
-| `permissions` | `media:read`, `media:control`, `storage`. Anything else is rejected. |
+| `permissions` | `media:read`, `media:control`, `storage`, `activity`. Anything else is rejected. |
 | `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed). Empty means no network. |
 | `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
 
@@ -143,6 +143,57 @@ so the widget does not need to check them.
 The example widget in `widgets/hello` declares one setting of each type.
 
 Lizun builds that predate settings reject a manifest with a `settings` field.
+
+## Live activity
+
+While the island is closed, a widget can show something in the mini island: a timer counting
+down, the next meeting, the next task. It needs the `activity` permission.
+
+The mini island is a capsule as wide as its content, with something at each end and a line of
+text in the middle. The widget does not draw it: it describes the ends with an icon from a fixed
+set and a short text, adds the line in the middle, and the island draws them in its own style:
+
+```js
+import { activity } from '/__sdk/index.js';
+
+await activity.set({
+  leading: { icon: 'timer', color: '#ff9f0a' },
+  title: 'Tea',
+  trailing: { text: '2:40' },
+});
+
+await activity.clear(); // nothing to show
+```
+
+| Field | Meaning |
+|---|---|
+| `leading`, `trailing` | Left and right end. |
+| `title` | One line in the middle, up to 100 characters. The capsule grows with it up to a limit, then the text is cut with an ellipsis. |
+| `icon` | One of `alarm`, `battery`, `bell`, `calendar`, `chat`, `check-circle`, `clock`, `cloud`, `coffee`, `download`, `envelope`, `fire`, `flag`, `headphones`, `heart`, `hourglass`, `info`, `lightning`, `list-checks`, `map-pin`, `microphone`, `moon`, `note`, `package`, `phone`, `record`, `star`, `sun`, `target`, `timer`, `trophy`, `upload`, `video-camera`, `warning`. |
+| `text` | Text at an end, up to 16 characters; what does not fit is cut with an ellipsis, so keep it to a number or a word. |
+| `color` | `#rrggbb` for the icon and text of that end; the island's text color when left out. `context.theme.textSecondary` gives a dimmer look. |
+
+At least one field must show something. Anything else is rejected with a `LizunError`.
+
+On screens with a camera notch (macOS, when Lizun gets there) the middle of the island is
+covered, so `title` will not be shown there and the ends will sit on either side of the notch.
+Keep the ends meaningful on their own.
+
+How it is shown:
+
+- The mini island shows one thing at a time: the current track first, then files in the tray,
+  then widget activities in the order the widgets have in the island. The user sets the
+  priority by moving widgets, and a hidden widget shows nothing.
+- When nothing has an activity, the mini island goes into the top edge; pointing at the edge
+  still opens the island.
+- In "Hide after a delay" mode the mini island comes out when a widget's activity appears, not
+  on every `set`, so a ticking timer does not keep it on screen.
+- `set` replaces the widget's previous activity. It is kept while the widget's frame reloads
+  (the island reloads widgets, for example after the tray tab was open), so a widget should set
+  or clear it every time it starts.
+
+The To-do widget is an example: it shows the next open task and how many more are left, and
+has a setting to turn that off.
 
 ## Text input
 

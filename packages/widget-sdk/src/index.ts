@@ -49,6 +49,61 @@ export interface NowPlaying {
   canPrevious: boolean;
 }
 
+/** Icons a live activity can use. */
+export type ActivityIcon =
+  | 'alarm'
+  | 'battery'
+  | 'bell'
+  | 'calendar'
+  | 'chat'
+  | 'check-circle'
+  | 'clock'
+  | 'cloud'
+  | 'coffee'
+  | 'download'
+  | 'envelope'
+  | 'fire'
+  | 'flag'
+  | 'headphones'
+  | 'heart'
+  | 'hourglass'
+  | 'info'
+  | 'lightning'
+  | 'list-checks'
+  | 'map-pin'
+  | 'microphone'
+  | 'moon'
+  | 'note'
+  | 'package'
+  | 'phone'
+  | 'record'
+  | 'star'
+  | 'sun'
+  | 'target'
+  | 'timer'
+  | 'trophy'
+  | 'upload'
+  | 'video-camera'
+  | 'warning';
+
+/** What one side of the mini island shows: an icon, a short text (up to 16 characters), or both. */
+export interface ActivityPart {
+  icon?: ActivityIcon;
+  text?: string;
+  /** `#rrggbb`; the island's text color when left out. */
+  color?: string;
+}
+
+/** What the widget shows in the closed island. At least one field must show something. */
+export interface LiveActivity {
+  /** Left end. */
+  leading?: ActivityPart;
+  /** One line in the middle, up to 100 characters; cut with an ellipsis when it does not fit. */
+  title?: string;
+  /** Right end. */
+  trailing?: ActivityPart;
+}
+
 export class LizunError extends Error {
   readonly code: string;
 
@@ -208,6 +263,17 @@ export const settings = {
   getAll: () => call<Settings>('settings.getAll'),
   /** Called with all values whenever the user changes any of them. */
   subscribe: (listener: (settings: Settings) => void): (() => void) => on('settings.changed', listener),
+};
+
+/**
+ * The widget's live activity in the closed island. Needs `activity`. The island shows one
+ * activity at a time: the current track and files in the tray come first, then widgets in the
+ * order the user put them in. `set` replaces the previous activity; call `clear` when there is
+ * nothing to show. The activity stays while the widget reloads, so set or clear it on start.
+ */
+export const activity = {
+  set: (activity: LiveActivity) => call<void>('activity.set', { activity }),
+  clear: () => call<void>('activity.clear'),
 };
 
 /** Small JSON values that survive restarts, private to this widget. Needs `storage`. */

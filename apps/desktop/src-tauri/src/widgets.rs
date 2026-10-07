@@ -24,7 +24,7 @@ const SDK_PREFIX: &str = "__sdk";
 const MANIFEST_FILE: &str = "manifest.json";
 
 /// Permissions a widget can request. The island refuses SDK calls that need anything else.
-pub const KNOWN_PERMISSIONS: &[&str] = &["media:read", "media:control", "storage"];
+pub const KNOWN_PERMISSIONS: &[&str] = &["media:read", "media:control", "storage", "activity"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

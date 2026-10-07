@@ -8,7 +8,9 @@ list, and widgets anyone can write and install.
 
 ## What works today (Windows)
 
-- Collapsed pill with live activities (cover art and equalizer for the current track, file count).
+- Mini island with live activities, a capsule as wide as what it shows: cover, title and
+  equalizer for the current track, files in the tray, and activities of widgets (the To-do
+  widget shows the next task). With nothing to show, it goes into the top edge.
 - Hover to open: spring animation with a content blur-in, closes when the cursor leaves.
 - Never steals focus, stays out of Alt+Tab and the taskbar; clicks outside the island go to the
   windows below. The only exception is typing into a widget's text field, after which the

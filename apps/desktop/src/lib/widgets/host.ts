@@ -7,6 +7,7 @@
 import { debug } from '../debug';
 import { keyboard } from '../keyboard.svelte';
 import { media, type MediaCommand } from '../media.svelte';
+import { activities, parseActivity } from './activities.svelte';
 import type { WidgetManifest } from './registry.svelte';
 import { widgetSettings } from './settings.svelte';
 
@@ -76,6 +77,11 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
       localStorage.setItem(storageKey(widget, params.key), raw);
     },
   },
+  'activity.set': {
+    permission: 'activity',
+    handler: ({ widget }, params) => activities.set(widget.id, parseActivity(params.activity)),
+  },
+  'activity.clear': { permission: 'activity', handler: ({ widget }) => activities.clear(widget.id) },
   // Sent by the SDK when a text field in the widget gains or loses focus; needs no permission.
   'keyboard.set': {
     handler: async (frame, params) => {

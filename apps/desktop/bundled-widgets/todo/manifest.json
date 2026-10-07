@@ -6,7 +6,7 @@
   "description": "A short list of tasks at hand",
   "entry": "index.html",
   "width": 260,
-  "permissions": ["storage"],
+  "permissions": ["storage", "activity"],
   "settings": [
     {
       "key": "completed",
@@ -24,6 +24,13 @@
       "type": "toggle",
       "label": "Add new tasks to the top",
       "default": false
+    },
+    {
+      "key": "showInIsland",
+      "type": "toggle",
+      "label": "Show the next task in the closed island",
+      "description": "The first open task and how many more are left.",
+      "default": true
     }
   ]
 }

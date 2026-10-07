@@ -1,9 +1,10 @@
 /** Island dimensions in logical pixels. */
 
-/** Width of the idle pill. */
+/** Width of the strip along the top edge that opens the island while the mini island is hidden. */
 export const PILL_WIDTH = 200;
-/** Extra width on each side while a live activity is shown in the collapsed island. */
-export const EAR_WIDTH = 72;
+/** The mini island is a capsule as wide as what it shows, within these bounds. */
+export const CAPSULE_MIN_WIDTH = 88;
+export const CAPSULE_MAX_WIDTH = 360;
 export const COLLAPSED_HEIGHT = 32;
 export const COLLAPSED_RADIUS = 12;
 export const EXPANDED_RADIUS = 30;

@@ -19,7 +19,11 @@
   type Section = 'general' | 'media' | 'widgets' | 'about';
 
   const VISIBILITY: { value: IslandVisibility; label: string; hint: string }[] = [
-    { value: 'always', label: 'Always visible', hint: 'The mini island stays at the top of the screen.' },
+    {
+      value: 'always',
+      label: 'Always visible',
+      hint: 'The mini island stays at the top of the screen while it has something to show, such as music, files in the tray or a widget activity.',
+    },
     {
       value: 'autoHide',
       label: 'Hide after a delay',
@@ -37,6 +41,7 @@
     'media:read': 'Reads now playing',
     'media:control': 'Controls playback',
     storage: 'Stores data',
+    activity: 'Shows in the closed island',
   };
 
   let section = $state<Section>('general');
