@@ -1,0 +1,10 @@
+{
+  "id": "dev.lizun.hello",
+  "name": "Hello Widget",
+  "version": "0.1.0",
+  "author": "Lizun",
+  "description": "Example third-party widget: shows the current track, keeps a counter and checks its own sandbox.",
+  "entry": "index.html",
+  "width": 230,
+  "permissions": ["media:read", "storage"]
+}

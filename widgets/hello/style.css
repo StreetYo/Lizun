@@ -1,0 +1,37 @@
+.hello {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 12px 14px;
+}
+
+.track {
+  flex: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13.5px;
+}
+
+.checks {
+  margin: auto 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--lz-text-secondary);
+}
+
+.checks .ok::before {
+  content: '✓ ';
+  color: #30d158;
+}
+
+.checks .bad::before {
+  content: '✗ ';
+  color: #ff453a;
+}
