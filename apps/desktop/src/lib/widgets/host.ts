@@ -7,6 +7,7 @@
 import { debug } from '../debug';
 import { media, type MediaCommand } from '../media.svelte';
 import type { WidgetManifest } from './registry.svelte';
+import { widgetSettings } from './settings.svelte';
 
 const PROTOCOL = 1;
 const STORAGE_PREFIX = 'lizun.widget.';
@@ -34,8 +35,16 @@ type Handler = (frame: Frame, params: Record<string, unknown>) => unknown;
 
 const METHODS: Record<string, { permission?: string; handler: Handler }> = {
   'lizun.handshake': {
-    handler: ({ widget }) => ({ protocol: PROTOCOL, widgetId: widget.id, permissions: widget.permissions, theme: THEME }),
+    handler: ({ widget }) => ({
+      protocol: PROTOCOL,
+      widgetId: widget.id,
+      permissions: widget.permissions,
+      theme: THEME,
+      settings: widgetSettings.of(widget),
+    }),
   },
+  // A widget's own settings need no permission; only the user can change them.
+  'settings.getAll': { handler: ({ widget }) => widgetSettings.of(widget) },
   'media.getNowPlaying': { permission: 'media:read', handler: () => mediaPayload() },
   'media.subscribe': {
     permission: 'media:read',
@@ -131,6 +140,12 @@ export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest):
       const payload = mediaPayload();
       for (const frame of frames.values()) {
         if (frame.mediaSubscribed) send(frame, { kind: 'event', name: 'media.changed', payload });
+      }
+    });
+    widgetSettings.onChange((widgetId) => {
+      for (const frame of frames.values()) {
+        if (frame.widget.id !== widgetId) continue;
+        send(frame, { kind: 'event', name: 'settings.changed', payload: widgetSettings.of(frame.widget) });
       }
     });
   }

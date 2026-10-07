@@ -27,6 +27,16 @@ let mockPreferences: unknown = {
   browserMediaPort: 6869,
 };
 
+/** Widgets the preview lists; empty, but a test can push manifests into it. */
+export const mockWidgets: { id: string; settings: { key: string; default: unknown }[] }[] = [];
+const mockWidgetSettings: Record<string, Record<string, unknown>> = {};
+
+function mockSettingsOf(widgetId: string): Record<string, unknown> {
+  const widget = mockWidgets.find((w) => w.id === widgetId);
+  const defaults = Object.fromEntries((widget?.settings ?? []).map((s) => [s.key, s.default]));
+  return { ...defaults, ...mockWidgetSettings[widgetId] };
+}
+
 export async function mockInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   switch (command) {
     case 'preferences_get':
@@ -58,7 +68,17 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       ] as T;
     case 'widgets_list':
     case 'widgets_reload':
-      return [] as T;
+      return mockWidgets as T;
+    case 'widget_settings_all':
+      return Object.fromEntries(mockWidgets.map((w) => [w.id, mockSettingsOf(w.id)])) as T;
+    case 'widget_settings_set': {
+      const { widgetId, key, value } = args as { widgetId: string; key: string; value: unknown };
+      mockWidgetSettings[widgetId] = { ...mockWidgetSettings[widgetId], [key]: value };
+      return mockSettingsOf(widgetId) as T;
+    }
+    case 'widget_settings_reset':
+      delete mockWidgetSettings[(args as { widgetId: string }).widgetId];
+      return mockSettingsOf((args as { widgetId: string }).widgetId) as T;
     case 'app_info':
       return { version: 'preview', widgetsDir: null } as T;
     case 'browser_media_status':

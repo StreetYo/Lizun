@@ -46,6 +46,9 @@ pub struct WidgetManifest {
     /// Origins the widget may fetch from, such as `https://api.example.com`.
     #[serde(default)]
     pub network: Vec<String>,
+    /// Options the user changes in the settings window.
+    #[serde(default)]
+    pub settings: Vec<crate::widget_settings::SettingSpec>,
 }
 
 fn default_entry() -> String {
@@ -98,6 +101,19 @@ pub fn widgets_open_folder(app: AppHandle) -> Result<(), String> {
     let dir = user_widgets_dir(&app).ok_or("no widgets folder")?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     crate::platform::reveal_folder(&dir).map_err(|e| e.to_string())
+}
+
+/// Manifests of the widgets found by the last scan.
+pub fn installed<R: Runtime>(app: &AppHandle<R>) -> Vec<WidgetManifest> {
+    let registry = app.state::<Registry>();
+    let widgets = registry.widgets.read().unwrap();
+    widgets.iter().map(|w| w.manifest.clone()).collect()
+}
+
+pub fn find<R: Runtime>(app: &AppHandle<R>, id: &str) -> Option<WidgetManifest> {
+    let registry = app.state::<Registry>();
+    let widgets = registry.widgets.read().unwrap();
+    widgets.iter().find(|w| w.manifest.id == id).map(|w| w.manifest.clone())
 }
 
 pub fn user_widgets_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
@@ -180,7 +196,7 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
     if let Some(bad) = manifest.network.iter().find(|origin| !is_valid_origin(origin)) {
         return Err(format!("invalid network origin {bad:?}: expected https://host[:port]"));
     }
-    Ok(())
+    crate::widget_settings::validate(&manifest.settings)
 }
 
 /// Accepts `https://host[:port]` with an optional leading `*.` wildcard, nothing else, so a
@@ -318,6 +334,7 @@ mod tests {
             width: default_width(),
             permissions: vec!["media:read".into()],
             network: vec![],
+            settings: vec![],
         }
     }
 
@@ -346,6 +363,12 @@ mod tests {
             network.network = vec![bad.into()];
             assert!(validate(&network).is_err(), "{bad} should be rejected");
         }
+    }
+
+    #[test]
+    fn example_widget_manifest_is_valid() {
+        let manifest = load_manifest(&repo_path("widgets/hello")).unwrap();
+        assert_eq!(manifest.settings.len(), 4);
     }
 
     #[test]

@@ -1,11 +1,29 @@
-import { debug, media, ready, storage } from '/__sdk/index.js';
+import { debug, media, ready, settings, storage } from '/__sdk/index.js';
 
+const title = document.getElementById('title');
 const track = document.getElementById('track');
 const counter = document.getElementById('counter');
 const checks = document.getElementById('checks');
 
-function showTrack(nowPlaying) {
-  track.textContent = nowPlaying ? `${nowPlaying.title} — ${nowPlaying.artist}` : 'Nothing playing';
+/** Values of the settings declared in manifest.json, changed by the user in Lizun's settings. */
+let options;
+let nowPlaying = null;
+
+const TRACK_FORMATS = {
+  titleArtist: (np) => `${np.title} — ${np.artist}`,
+  title: (np) => np.title,
+  artist: (np) => np.artist,
+};
+
+function render() {
+  title.textContent = options.title || 'Hello widget';
+  track.hidden = !options.showTrack;
+  track.textContent = nowPlaying ? TRACK_FORMATS[options.trackFormat](nowPlaying) : 'Nothing playing';
+}
+
+function showTrack(next) {
+  nowPlaying = next;
+  render();
 }
 
 /** Things a widget must not be able to do. Each entry should end up "blocked". */
@@ -36,11 +54,17 @@ async function sandboxChecks() {
 }
 
 const context = await ready();
+options = context.settings;
+render();
+settings.subscribe((next) => {
+  options = next;
+  render();
+});
 
 let clicks = (await storage.get('clicks')) ?? 0;
 counter.textContent = `Clicked ${clicks}×`;
 counter.addEventListener('click', async () => {
-  clicks += 1;
+  clicks += options.step;
   counter.textContent = `Clicked ${clicks}×`;
   await storage.set('clicks', clicks);
 });

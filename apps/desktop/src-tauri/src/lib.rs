@@ -5,6 +5,7 @@ mod platform;
 mod preferences;
 mod settings;
 mod system_tray;
+mod widget_settings;
 mod widgets;
 mod browser;
 
@@ -37,6 +38,9 @@ pub fn run() {
             widgets::widgets_list,
             widgets::widgets_reload,
             widgets::widgets_open_folder,
+            widget_settings::widget_settings_all,
+            widget_settings::widget_settings_set,
+            widget_settings::widget_settings_reset,
             settings::settings_open,
             settings::app_info,
             settings::app_quit,
@@ -46,6 +50,7 @@ pub fn run() {
         .setup(|app| {
             preferences::init(app.handle());
             widgets::init(app.handle());
+            widget_settings::init(app.handle());
             island::setup(app)?;
             system_tray::setup(app)?;
             media::start(app.handle());

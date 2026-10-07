@@ -1,5 +1,20 @@
 import { invoke } from '../platform';
 
+export type SettingValue = boolean | number | string;
+
+interface SettingBase {
+  key: string;
+  label: string;
+  description: string;
+}
+
+/** One option a widget declares in its manifest (see src-tauri/src/widget_settings.rs). */
+export type SettingSpec =
+  | (SettingBase & { type: 'toggle'; default: boolean })
+  | (SettingBase & { type: 'number'; default: number; min: number; max: number; step: number; unit: string })
+  | (SettingBase & { type: 'select'; default: string; options: { value: string; label: string }[] })
+  | (SettingBase & { type: 'text'; default: string; maxLength: number; placeholder: string });
+
 export interface WidgetManifest {
   id: string;
   name: string;
@@ -10,6 +25,7 @@ export interface WidgetManifest {
   width: number;
   permissions: string[];
   network: string[];
+  settings: SettingSpec[];
   source: 'dev' | 'user';
 }
 

@@ -6,5 +6,36 @@
   "description": "Example third-party widget: shows the current track, keeps a counter and checks its own sandbox.",
   "entry": "index.html",
   "width": 230,
-  "permissions": ["media:read", "storage"]
+  "permissions": ["media:read", "storage"],
+  "settings": [
+    {
+      "key": "title",
+      "type": "text",
+      "label": "Title",
+      "description": "Shown at the top of the widget.",
+      "default": "Hello widget",
+      "maxLength": 40
+    },
+    { "key": "showTrack", "type": "toggle", "label": "Show the current track", "default": true },
+    {
+      "key": "trackFormat",
+      "type": "select",
+      "label": "Track",
+      "default": "titleArtist",
+      "options": [
+        { "value": "titleArtist", "label": "Title and artist" },
+        { "value": "title", "label": "Title only" },
+        { "value": "artist", "label": "Artist only" }
+      ]
+    },
+    {
+      "key": "step",
+      "type": "number",
+      "label": "Counter step",
+      "description": "How much each click adds.",
+      "default": 1,
+      "min": 1,
+      "max": 10
+    }
+  ]
 }

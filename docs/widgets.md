@@ -34,6 +34,7 @@ my-widget/
 | `width` | Column width in logical pixels, 120–640 (default 240). |
 | `permissions` | `media:read`, `media:control`, `storage`. Anything else is rejected. |
 | `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed). Empty means no network. |
+| `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
 
 ## The SDK
 
@@ -58,6 +59,90 @@ await storage.set('count', count + 1);
 
 Calls without the needed permission reject with a `LizunError` whose `code` is
 `permission_denied`. Types are in `packages/widget-sdk/src/index.ts`.
+
+## Settings
+
+A widget does not build its own settings screen. It lists its options in the manifest, and
+Lizun shows them in Settings > Widgets under the widget, checks and stores the values, and hands
+them to the widget. Why it works this way is in [ADR 0002](adr/0002-widget-settings.md).
+
+```json
+{
+  "id": "com.example.weather",
+  "settings": [
+    { "key": "city", "type": "text", "label": "City", "default": "Moscow", "maxLength": 80 },
+    {
+      "key": "units",
+      "type": "select",
+      "label": "Units",
+      "default": "metric",
+      "options": [
+        { "value": "metric", "label": "Celsius" },
+        { "value": "imperial", "label": "Fahrenheit" }
+      ]
+    },
+    { "key": "refresh", "type": "number", "label": "Refresh every", "unit": "min", "default": 15, "min": 5, "max": 120 },
+    { "key": "feelsLike", "type": "toggle", "label": "Show \"feels like\"", "default": true }
+  ]
+}
+```
+
+Every setting has these fields:
+
+| Field | Meaning |
+|---|---|
+| `key` | Name the widget reads the value by: a letter, then up to 31 letters, digits or `_`. Unique within the widget. |
+| `type` | `toggle`, `number`, `select` or `text`. |
+| `label` | Shown next to the control, up to 60 characters. |
+| `description` | Optional hint under the label, up to 200 characters. |
+| `default` | Required. The value until the user changes it; it must be valid for the type. |
+
+Types and their extra fields:
+
+| Type | Value | Extra fields |
+|---|---|---|
+| `toggle` | `true` / `false` | none |
+| `number` | number | `min` and `max` (required), `step` (default 1), `unit` (optional label such as `s` or `min`, up to 10 characters) |
+| `select` | one of the option values | `options`: 2–20 `{ "value": string, "label": string }`; values are 1–64 characters and unique, labels up to 60 |
+| `text` | string | `maxLength` (1–500, default 100), `placeholder` (optional, up to 100 characters) |
+
+A widget may declare up to 32 settings, shown in the manifest order. A manifest whose settings
+break these rules is rejected like any other invalid manifest, and the reason is logged.
+
+How values are kept:
+
+- Values live in `widget-settings.json` in the Lizun config folder
+  (`%APPDATA%\app.lizun.desktop\`), per widget id, not inside the widget folder, so they
+  survive widget updates and reinstalls. Settings > Widgets has a "Reset to defaults" button
+  for each widget.
+- When the widget changes its `settings`, saved values are checked against the new list: a
+  number out of range is clamped, text longer than `maxLength` is cut, a value of the wrong type
+  or a removed option falls back to `default`, and keys that are no longer declared are left
+  out.
+- Only the user changes settings. A widget reads them and cannot write them; data the widget
+  writes itself goes to `storage`.
+
+Reading them needs no permission:
+
+```js
+import { ready, settings } from '/__sdk/index.js';
+
+const context = await ready();
+let options = context.settings; // { city: 'Moscow', units: 'metric', refresh: 15, feelsLike: true }
+
+// Called with all values whenever the user changes any of them in Settings.
+settings.subscribe((next) => {
+  options = next;
+  render();
+});
+```
+
+`settings.getAll()` returns the same object as a promise. Values always have the declared type,
+so the widget does not need to check them.
+
+The example widget in `widgets/hello` declares one setting of each type.
+
+Lizun builds that predate settings reject a manifest with a `settings` field.
 
 ## Sandbox
 

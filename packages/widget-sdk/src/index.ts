@@ -19,11 +19,19 @@ export interface Theme {
   radius: number;
 }
 
+/** A setting's value; its type matches the `type` declared in manifest.json. */
+export type SettingValue = boolean | number | string;
+
+/** The widget's settings by `key`, every declared key included. */
+export type Settings = Record<string, SettingValue>;
+
 export interface WidgetContext {
   protocol: number;
   widgetId: string;
   permissions: string[];
   theme: Theme;
+  /** Current values of the settings declared in manifest.json. */
+  settings: Settings;
 }
 
 export interface NowPlaying {
@@ -121,6 +129,16 @@ export const media = {
   togglePlayPause: () => call<void>('media.control', { command: 'togglePlayPause' }),
   next: () => call<void>('media.control', { command: 'next' }),
   previous: () => call<void>('media.control', { command: 'previous' }),
+};
+
+/**
+ * The widget's own settings, declared in manifest.json and changed by the user in Lizun's
+ * settings window. Widgets can only read them; no permission is needed.
+ */
+export const settings = {
+  getAll: () => call<Settings>('settings.getAll'),
+  /** Called with all values whenever the user changes any of them. */
+  subscribe: (listener: (settings: Settings) => void): (() => void) => on('settings.changed', listener),
 };
 
 /** Small JSON values that survive restarts, private to this widget. Needs `storage`. */

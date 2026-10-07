@@ -10,7 +10,8 @@
   import { browserMedia } from '../lib/browserMedia.svelte';
   import { invoke, isTauri } from '../lib/platform';
   import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
-  import type { WidgetManifest } from '../lib/widgets/registry.svelte';
+  import type { SettingSpec, SettingValue, WidgetManifest } from '../lib/widgets/registry.svelte';
+  import { widgetSettings } from '../lib/widgets/settings.svelte';
 
   type Section = 'general' | 'media' | 'widgets' | 'about';
 
@@ -46,6 +47,7 @@
   onMount(async () => {
     void preferences.start();
     void browserMedia.start();
+    void widgetSettings.start();
     info =(await invoke('app_info')) ?? info;
     widgets = (await invoke<WidgetManifest[]>('widgets_list')) ?? [];
     if (isTauri) launchAtLogin = await isEnabled().catch(() => false);
@@ -136,6 +138,42 @@
 
   async function reloadWidgets(): Promise<void> {
     widgets = (await invoke<WidgetManifest[]>('widgets_reload')) ?? [];
+    await widgetSettings.load();
+  }
+
+  async function setWidgetSetting(widget: WidgetManifest, key: string, value: SettingValue): Promise<void> {
+    error = null;
+    try {
+      await widgetSettings.set(widget.id, key, value);
+    } catch (err) {
+      error = `Could not save the setting: ${err}`;
+    }
+  }
+
+  /** Numbers are clamped to the declared range; anything that is not a number restores the saved value. */
+  async function setWidgetNumber(
+    event: Event,
+    widget: WidgetManifest,
+    setting: Extract<SettingSpec, { type: 'number' }>,
+  ): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const number = Number.parseFloat(input.value.replace(',', '.'));
+    if (!Number.isFinite(number)) {
+      input.value = String(widgetSettings.of(widget)[setting.key]);
+      return;
+    }
+    const clamped = Math.min(setting.max, Math.max(setting.min, number));
+    input.value = String(clamped);
+    await setWidgetSetting(widget, setting.key, clamped);
+  }
+
+  async function resetWidgetSettings(widget: WidgetManifest): Promise<void> {
+    error = null;
+    try {
+      await widgetSettings.reset(widget.id);
+    } catch (err) {
+      error = `Could not reset the settings: ${err}`;
+    }
   }
 
   function openWidgetsFolder(): void {
@@ -143,6 +181,56 @@
     invoke('widgets_open_folder').catch((err) => (error = `Could not open the folder: ${err}`));
   }
 </script>
+
+{#snippet settingRow(widget: WidgetManifest, setting: SettingSpec, value: SettingValue)}
+  {@const id = `setting-${widget.id}-${setting.key}`}
+  <div class="row setting">
+    <label class="text" for={id}>
+      <span class="label">{setting.label}</span>
+      {#if setting.description}<span class="hint">{setting.description}</span>{/if}
+    </label>
+    {#if setting.type === 'toggle'}
+      <button
+        {id}
+        class="switch"
+        class:on={value === true}
+        role="switch"
+        aria-checked={value === true}
+        aria-label={setting.label}
+        onclick={() => setWidgetSetting(widget, setting.key, value !== true)}
+      ><span></span></button>
+    {:else if setting.type === 'number'}
+      <span class="field">
+        <input
+          {id}
+          type="number"
+          min={setting.min}
+          max={setting.max}
+          step={setting.step}
+          {value}
+          onchange={(event) => setWidgetNumber(event, widget, setting)}
+        />
+        {#if setting.unit}<span class="unit">{setting.unit}</span>{/if}
+      </span>
+    {:else if setting.type === 'select'}
+      <select {id} class="select" {value} onchange={(event) => setWidgetSetting(widget, setting.key, event.currentTarget.value)}>
+        {#each setting.options as option (option.value)}
+          <option value={option.value}>{option.label}</option>
+        {/each}
+      </select>
+    {:else}
+      <input
+        {id}
+        class="text-input"
+        type="text"
+        maxlength={setting.maxLength}
+        placeholder={setting.placeholder}
+        {value}
+        onchange={(event) => setWidgetSetting(widget, setting.key, event.currentTarget.value)}
+      />
+    {/if}
+  </div>
+{/snippet}
 
 <div class="window">
   <nav>
@@ -300,6 +388,15 @@
               </div>
               <span class="badge">{widget.source === 'dev' ? 'Development' : widget.author || 'Installed'}</span>
             </div>
+            {#if widget.settings.length}
+              {@const values = widgetSettings.of(widget)}
+              {#each widget.settings as setting (setting.key)}
+                {@render settingRow(widget, setting, values[setting.key])}
+              {/each}
+              <div class="row setting reset">
+                <button class="link" onclick={() => resetWidgetSettings(widget)}>Reset to defaults</button>
+              </div>
+            {/if}
           {/each}
         </div>
       {:else}
@@ -704,6 +801,55 @@
 
   .field input.port {
     width: 76px;
+  }
+
+  /* A widget's own settings, listed under it. */
+  .setting {
+    padding-left: 32px;
+  }
+
+  .setting.reset {
+    justify-content: flex-end;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  .select,
+  .text-input {
+    height: 28px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1px solid #3a3940;
+    border-radius: 7px;
+    background: #141316;
+    color: var(--text);
+    font: inherit;
+    font-size: 13.5px;
+  }
+
+  .select {
+    min-width: 120px;
+    max-width: 220px;
+  }
+
+  .text-input {
+    width: 200px;
+  }
+
+  .select:focus,
+  .text-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .link {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--accent);
+  }
+
+  .link:hover {
+    text-decoration: underline;
   }
 
   .status.ok {
