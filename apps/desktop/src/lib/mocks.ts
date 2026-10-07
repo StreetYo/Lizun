@@ -18,9 +18,15 @@ function sampleArtwork(): string {
 }
 
 const startedAt = Date.now();
+let mockPreferences: unknown = { islandVisibility: 'always', autoHideDelayMs: 1000 };
 
-export async function mockInvoke<T>(command: string, _args?: Record<string, unknown>): Promise<T> {
+export async function mockInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   switch (command) {
+    case 'preferences_get':
+      return mockPreferences as T;
+    case 'preferences_set':
+      mockPreferences = args?.preferences;
+      return mockPreferences as T;
     case 'media_snapshot':
       return {
         sourceApp: 'Spotify.exe',

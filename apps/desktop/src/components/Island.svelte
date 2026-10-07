@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { debug, frameStats } from '../lib/debug';
   import { fileTray } from '../lib/fileTray.svelte';
   import {
@@ -9,6 +9,7 @@
     DROP_SIZE,
     EAR_WIDTH,
     EXPANDED_RADIUS,
+    HOT_ZONE_HEIGHT,
     HOVER_MARGIN,
     OPEN_DELAY_MS,
     PILL_WIDTH,
@@ -17,6 +18,7 @@
   } from '../lib/geometry';
   import { media } from '../lib/media.svelte';
   import { onFileDrag, setHitRegion } from '../lib/platform';
+  import { preferences } from '../lib/preferences.svelte';
   import { CLOSE_SPRING, OPEN_SPRING, Spring } from '../lib/spring';
   import { ui } from '../lib/ui.svelte';
   import DropZones from './DropZones.svelte';
@@ -31,17 +33,52 @@
   let panelSize = $state({ width: 640, height: 220 });
   let island: HTMLDivElement;
 
+  let peeking = $state(true);
+  let peekTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Set while the panel closes into the mini island; the hide delay starts once it is there. */
+  let peekAfterClose = false;
+
+  /** In "hide after a delay" mode, shows the mini island for the configured time. */
+  function peek(): void {
+    peeking = true;
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => (peeking = false), preferences.value.autoHideDelayMs);
+  }
+
+  /** The closed island is pulled into the top edge (zero height). Pointing at the edge still
+   * opens it, and it then grows straight out of the edge without showing the mini island. */
+  const concealed = $derived.by(() => {
+    if (mode !== 'collapsed') return false;
+    // Stay in the edge until the setting is known, so "Hidden" never flashes the island.
+    if (!preferences.loaded) return true;
+    const visibility = preferences.value.islandVisibility;
+    return visibility === 'hidden' || (visibility === 'autoHide' && !peeking);
+  });
+
+  // What the mini island announces: a new track, play/pause, files added to the tray.
+  const activity = $derived(
+    [media.nowPlaying?.title, media.nowPlaying?.artist, media.nowPlaying?.playing, fileTray.files.length].join('|'),
+  );
+
+  $effect(() => {
+    void activity;
+    void preferences.value.islandVisibility;
+    untrack(peek);
+  });
+
   const hasActivity = $derived(media.nowPlaying !== null || fileTray.files.length > 0);
   const target: IslandSize = $derived.by(() => {
     if (mode === 'expanded') return { ...panelSize, radius: EXPANDED_RADIUS };
     if (mode === 'dropping') return { ...DROP_SIZE, radius: EXPANDED_RADIUS };
     const width = hasActivity ? PILL_WIDTH + 2 * EAR_WIDTH : PILL_WIDTH;
+    if (concealed) return { width, height: 0, radius: 0 };
     return { width, height: COLLAPSED_HEIGHT, radius: COLLAPSED_RADIUS };
   });
 
+  // The island starts inside the top edge and comes out once the preferences are loaded.
   const width = new Spring(PILL_WIDTH);
-  const height = new Spring(COLLAPSED_HEIGHT);
-  const radius = new Spring(COLLAPSED_RADIUS);
+  const height = new Spring(0);
+  const radius = new Spring(0);
 
   let frame = 0;
   let lastTime = 0;
@@ -49,7 +86,7 @@
 
   function render(): void {
     island.style.width = `${width.value}px`;
-    island.style.height = `${height.value}px`;
+    island.style.height = `${Math.max(0, height.value)}px`;
     const r = `${Math.max(0, radius.value)}px`;
     island.style.borderBottomLeftRadius = r;
     island.style.borderBottomRightRadius = r;
@@ -69,22 +106,41 @@
       lastTime = 0;
       debug.lastAnimation = frameStats(mode, timestamps);
       timestamps = [];
+      if (peekAfterClose && mode === 'collapsed') {
+        peekAfterClose = false;
+        peek();
+      }
       updateRegion();
     } else {
       frame = requestAnimationFrame(tick);
     }
   }
 
-  /** Input region: the island plus room for its shadow, or a small hover margin when flat. */
-  function updateRegion(next?: IslandSize): void {
-    const w = Math.max(width.value, next?.width ?? 0);
-    const h = Math.max(height.value, next?.height ?? 0);
+  /** Input region, which also clips what is drawn: it covers both the current and the target
+   * size so animations are never cut off, plus room for the shadow (or a small hover margin
+   * when flat). Only once the island has fully retracted into the edge does it shrink to the
+   * strip along the top edge. */
+  function updateRegion(): void {
+    const w = Math.max(width.value, target.width);
+    const h = Math.max(height.value, target.height);
+    const x = (window.innerWidth - w) / 2;
+    if (concealed && h < 1) {
+      setHitRegion([
+        {
+          x: Math.floor(x - HOVER_MARGIN),
+          y: 0,
+          width: Math.ceil(w + HOVER_MARGIN * 2),
+          height: HOT_ZONE_HEIGHT,
+        },
+      ]);
+      return;
+    }
     const open = h > COLLAPSED_HEIGHT + 1;
     const side = open ? SHADOW_MARGIN.side : HOVER_MARGIN;
     const bottom = open ? SHADOW_MARGIN.bottom : HOVER_MARGIN;
     setHitRegion([
       {
-        x: Math.floor((window.innerWidth - w) / 2 - side),
+        x: Math.floor(x - side),
         y: 0,
         width: Math.ceil(w + side * 2),
         height: Math.ceil(h + bottom),
@@ -98,11 +154,16 @@
     height.setTarget(target.height, params);
     radius.setTarget(target.radius, params);
     // Grow the input region before the island grows into it; it shrinks once settled.
-    updateRegion(target);
+    untrack(updateRegion);
     if (!frame) {
       timestamps = [];
       frame = requestAnimationFrame(tick);
     }
+  });
+
+  $effect(() => {
+    void concealed;
+    untrack(() => updateRegion());
   });
 
   $effect(() => {
@@ -115,7 +176,17 @@
   function setMode(next: Mode): void {
     clearTimeout(openTimer);
     clearTimeout(closeTimer);
-    if (next === 'collapsed') tab = 'widgets';
+    peekAfterClose = false;
+    if (next === 'collapsed' && mode !== 'collapsed') {
+      tab = 'widgets';
+      // "Hide after a delay": the panel closes into the mini island, which stays for the
+      // configured time before going into the edge. "Hidden" goes straight into the edge.
+      if (preferences.value.islandVisibility === 'autoHide') {
+        peeking = true;
+        clearTimeout(peekTimer);
+        peekAfterClose = true;
+      }
+    }
     mode = next;
   }
 
@@ -184,39 +255,56 @@
   });
 </script>
 
+<!-- Hover is tracked on a wrapper so that moving from the edge sensor into the growing island
+     does not count as leaving. -->
 <div
-  class="island"
-  bind:this={island}
+  class="hover-root"
   onpointerenter={pointerEnter}
   onpointerleave={pointerLeave}
   onpointermove={() => clearTimeout(closeTimer)}
   role="region"
   aria-label="Lizun"
 >
-  <div class="layer live" class:visible={mode === 'collapsed'}>
-    <LiveActivity active={mode === 'collapsed'} />
-  </div>
-  <div
-    class="layer centered"
-    class:visible={mode === 'expanded'}
-    bind:clientWidth={panelSize.width}
-    bind:clientHeight={panelSize.height}
-  >
-    <Panel bind:tab />
-  </div>
-  <div class="layer centered" class:visible={mode === 'dropping'}>
-    <DropZones active={dropZone} />
+  {#if concealed}
+    <div class="sensor" style:width="{target.width + 2 * HOVER_MARGIN}px" style:height="{HOT_ZONE_HEIGHT}px"></div>
+  {/if}
+  <div class="island" bind:this={island}>
+    <div class="layer live" class:visible={mode === 'collapsed' && !concealed}>
+      <LiveActivity active={mode === 'collapsed' && !concealed} />
+    </div>
+    <div
+      class="layer centered"
+      class:visible={mode === 'expanded'}
+      bind:clientWidth={panelSize.width}
+      bind:clientHeight={panelSize.height}
+    >
+      <Panel bind:tab />
+    </div>
+    <div class="layer centered" class:visible={mode === 'dropping'}>
+      <DropZones active={dropZone} />
+    </div>
   </div>
 </div>
 
 <style>
+  .hover-root {
+    display: contents;
+  }
+
+  .sensor {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    translate: -50% 0;
+  }
+
   .island {
     position: absolute;
     top: 0;
     left: 50%;
     translate: -50% 0;
     width: 200px;
-    height: 32px;
+    height: 0;
     overflow: hidden;
     background: var(--island-bg);
     border-radius: 0 0 12px 12px;

@@ -2,6 +2,7 @@ mod file_tray;
 mod island;
 mod media;
 mod platform;
+mod preferences;
 mod settings;
 mod system_tray;
 mod widgets;
@@ -35,8 +36,11 @@ pub fn run() {
             settings::settings_open,
             settings::app_info,
             settings::app_quit,
+            preferences::preferences_get,
+            preferences::preferences_set,
         ])
         .setup(|app| {
+            preferences::init(app.handle());
             widgets::init(app.handle());
             island::setup(app)?;
             system_tray::setup(app)?;

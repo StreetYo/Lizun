@@ -4,10 +4,12 @@
   import { fileTray } from './lib/fileTray.svelte';
   import { isTauri, listen } from './lib/platform';
   import { media } from './lib/media.svelte';
+  import { preferences } from './lib/preferences.svelte';
   import { widgetRegistry } from './lib/widgets/registry.svelte';
 
   onMount(() => {
     if (!isTauri) document.body.classList.add('preview');
+    void preferences.start();
     void media.start();
     void fileTray.restore();
     void widgetRegistry.load();

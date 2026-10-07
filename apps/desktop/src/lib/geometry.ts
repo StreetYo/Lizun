@@ -20,6 +20,10 @@ export const HOVER_MARGIN = 4;
 export const OPEN_DELAY_MS = 90;
 export const CLOSE_DELAY_MS = 320;
 
+/** While the mini island is hidden, only this strip along the top edge reacts to the cursor,
+ * so the invisible island does not block clicks on the windows below. */
+export const HOT_ZONE_HEIGHT = 4;
+
 export interface IslandSize {
   width: number;
   height: number;

@@ -7,9 +7,20 @@
   import Info from 'phosphor-svelte/lib/Info';
   import PuzzlePiece from 'phosphor-svelte/lib/PuzzlePiece';
   import { invoke, isTauri } from '../lib/platform';
+  import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
   import type { WidgetManifest } from '../lib/widgets/registry.svelte';
 
   type Section = 'general' | 'widgets' | 'about';
+
+  const VISIBILITY: { value: IslandVisibility; label: string; hint: string }[] = [
+    { value: 'always', label: 'Always visible', hint: 'The mini island stays at the top of the screen.' },
+    {
+      value: 'autoHide',
+      label: 'Hide after a delay',
+      hint: 'Shows after the island closes or when something changes, such as a new track, then hides.',
+    },
+    { value: 'hidden', label: 'Hidden', hint: 'Nothing is shown while the island is closed.' },
+  ];
 
   const BUILT_IN = [
     { name: 'Now Playing', description: 'Cover, playback controls and progress of the current track' },
@@ -31,6 +42,7 @@
   let error = $state<string | null>(null);
 
   onMount(async () => {
+    void preferences.start();
     info = (await invoke('app_info')) ?? info;
     widgets = (await invoke<WidgetManifest[]>('widgets_list')) ?? [];
     if (isTauri) launchAtLogin = await isEnabled().catch(() => false);
@@ -44,6 +56,35 @@
       launchAtLogin = await isEnabled();
     } catch (err) {
       error = `Could not change the login item: ${err}`;
+    }
+  }
+
+  async function setVisibility(value: IslandVisibility): Promise<void> {
+    error = null;
+    try {
+      await preferences.update({ islandVisibility: value });
+    } catch (err) {
+      error = `Could not save the setting: ${err}`;
+    }
+  }
+
+  const MIN_DELAY_S = 0.2;
+  const MAX_DELAY_S = 10;
+
+  async function setDelay(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const seconds = Number.parseFloat(input.value.replace(',', '.'));
+    if (!Number.isFinite(seconds)) {
+      input.value = String(preferences.value.autoHideDelayMs / 1000);
+      return;
+    }
+    const clamped = Math.min(MAX_DELAY_S, Math.max(MIN_DELAY_S, seconds));
+    input.value = String(clamped);
+    error = null;
+    try {
+      await preferences.update({ autoHideDelayMs: Math.round(clamped * 1000) });
+    } catch (err) {
+      error = `Could not save the setting: ${err}`;
     }
   }
 
@@ -90,6 +131,41 @@
           ><span></span></button>
         </div>
       </div>
+
+      <h2>Mini island</h2>
+      <div class="card" role="radiogroup" aria-label="Mini island">
+        {#each VISIBILITY as option (option.value)}
+          {@const checked = preferences.value.islandVisibility === option.value}
+          <button class="row option" role="radio" aria-checked={checked} onclick={() => setVisibility(option.value)}>
+            <span class="radio" class:checked></span>
+            <span class="text">
+              <span class="label">{option.label}</span>
+              <span class="hint">{option.hint}</span>
+            </span>
+          </button>
+          {#if option.value === 'autoHide' && checked}
+            <div class="row delay">
+              <label class="text" for="auto-hide-delay">
+                <span class="label">Delay</span>
+                <span class="hint">How long the mini island stays, from {MIN_DELAY_S} to {MAX_DELAY_S} seconds.</span>
+              </label>
+              <span class="field">
+                <input
+                  id="auto-hide-delay"
+                  type="number"
+                  min={MIN_DELAY_S}
+                  max={MAX_DELAY_S}
+                  step="0.1"
+                  value={preferences.value.autoHideDelayMs / 1000}
+                  onchange={setDelay}
+                />
+                <span class="unit">s</span>
+              </span>
+            </div>
+          {/if}
+        {/each}
+      </div>
+      <p class="note">In every mode, point at the top edge of the screen to open the island.</p>
     {:else if section === 'widgets'}
       <div class="head">
         <h1>Widgets</h1>
@@ -282,8 +358,76 @@
   }
 
   .label {
+    display: block;
     font-size: 14px;
     font-weight: 600;
+  }
+
+  .option {
+    width: 100%;
+    text-align: left;
+  }
+
+  .option:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .radio {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 2px solid #4a4950;
+    transition:
+      border-color 150ms ease,
+      border-width 150ms ease;
+  }
+
+  .radio.checked {
+    border: 5.5px solid var(--accent);
+    background: #fff;
+  }
+
+  .delay {
+    padding-left: 50px;
+  }
+
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .field input {
+    width: 64px;
+    height: 28px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1px solid #3a3940;
+    border-radius: 7px;
+    background: #141316;
+    color: var(--text);
+    font: inherit;
+    font-size: 13.5px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .field input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .unit {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .note {
+    margin: 10px 2px 0;
+    font-size: 12.5px;
+    color: var(--text-tertiary);
   }
 
   .version {
@@ -294,6 +438,7 @@
   }
 
   .hint {
+    display: block;
     margin-top: 2px;
     font-size: 12.5px;
     color: var(--text-secondary);
