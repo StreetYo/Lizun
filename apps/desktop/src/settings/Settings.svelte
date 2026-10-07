@@ -5,12 +5,14 @@
   import FolderOpen from 'phosphor-svelte/lib/FolderOpen';
   import GearSix from 'phosphor-svelte/lib/GearSix';
   import Info from 'phosphor-svelte/lib/Info';
+  import MusicNotes from 'phosphor-svelte/lib/MusicNotes';
   import PuzzlePiece from 'phosphor-svelte/lib/PuzzlePiece';
+  import { browserMedia } from '../lib/browserMedia.svelte';
   import { invoke, isTauri } from '../lib/platform';
   import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
   import type { WidgetManifest } from '../lib/widgets/registry.svelte';
 
-  type Section = 'general' | 'widgets' | 'about';
+  type Section = 'general' | 'media' | 'widgets' | 'about';
 
   const VISIBILITY: { value: IslandVisibility; label: string; hint: string }[] = [
     { value: 'always', label: 'Always visible', hint: 'The mini island stays at the top of the screen.' },
@@ -43,7 +45,8 @@
 
   onMount(async () => {
     void preferences.start();
-    info = (await invoke('app_info')) ?? info;
+    void browserMedia.start();
+    info =(await invoke('app_info')) ?? info;
     widgets = (await invoke<WidgetManifest[]>('widgets_list')) ?? [];
     if (isTauri) launchAtLogin = await isEnabled().catch(() => false);
   });
@@ -94,6 +97,43 @@
     }
   }
 
+  /** Allowed port range; it matches src-tauri/src/preferences.rs. */
+  const PORTS = { min: 1024, max: 65535 };
+
+  async function toggleBrowserMedia(): Promise<void> {
+    error = null;
+    try {
+      await preferences.update({ browserMedia: !preferences.value.browserMedia });
+    } catch (err) {
+      error = `Could not save the setting: ${err}`;
+    }
+  }
+
+  async function setPort(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const port = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(port) || port < PORTS.min || port > PORTS.max) {
+      input.value = String(preferences.value.browserMediaPort);
+      error = `The port must be a number from ${PORTS.min} to ${PORTS.max}.`;
+      return;
+    }
+    error = null;
+    try {
+      await preferences.update({ browserMediaPort: port });
+    } catch (err) {
+      error = `Could not save the setting: ${err}`;
+    }
+  }
+
+  const browserMediaState = $derived.by((): { text: string; tone: 'ok' | 'wait' | 'bad' } => {
+    const status = browserMedia.status;
+    if (!status) return { text: 'Starting…', tone: 'wait' };
+    if (status.error) return { text: `${status.error} Lizun keeps retrying; choose another port if it stays busy.`, tone: 'bad' };
+    if (status.browsers.length) return { text: `Connected: ${[...new Set(status.browsers)].join(', ')}`, tone: 'ok' };
+    if (status.listening) return { text: `Waiting for the extension on port ${status.port}.`, tone: 'wait' };
+    return { text: 'Starting…', tone: 'wait' };
+  });
+
   async function reloadWidgets(): Promise<void> {
     widgets = (await invoke<WidgetManifest[]>('widgets_reload')) ?? [];
   }
@@ -109,6 +149,9 @@
     <div class="brand"><span class="logo"></span>Lizun</div>
     <button class:active={section === 'general'} onclick={() => (section = 'general')}>
       <GearSix size={16} weight="fill" /> General
+    </button>
+    <button class:active={section === 'media'} onclick={() => (section = 'media')}>
+      <MusicNotes size={16} weight="fill" /> Media
     </button>
     <button class:active={section === 'widgets'} onclick={() => (section = 'widgets')}>
       <PuzzlePiece size={16} weight="fill" /> Widgets
@@ -174,6 +217,31 @@
         {/each}
       </div>
       <p class="note">In every mode, point at the top edge of the screen to open the island.</p>
+
+      <h2>Opening</h2>
+      <div class="card">
+        <div class="row">
+          <label class="text" for="open-delay">
+            <span class="label">Hover delay</span>
+            <span class="hint">
+              How long to hold the pointer at the top edge before the island opens, from {OPEN_DELAY_S.min} to
+              {OPEN_DELAY_S.max} seconds. A longer delay prevents accidental opens.
+            </span>
+          </label>
+          <span class="field">
+            <input
+              id="open-delay"
+              type="number"
+              min={OPEN_DELAY_S.min}
+              max={OPEN_DELAY_S.max}
+              step="0.05"
+              value={preferences.value.openDelayMs / 1000}
+              onchange={(event) => setDelay(event, 'openDelayMs', OPEN_DELAY_S)}
+            />
+            <span class="unit">s</span>
+          </span>
+        </div>
+      </div>
     {:else if section === 'widgets'}
       <div class="head">
         <h1>Widgets</h1>
@@ -217,31 +285,6 @@
                 </div>
               </div>
               <span class="badge">{widget.source === 'dev' ? 'Development' : widget.author || 'Installed'}</span>
-
-      <h2>Opening</h2>
-      <div class="card">
-        <div class="row">
-          <label class="text" for="open-delay">
-            <span class="label">Hover delay</span>
-            <span class="hint">
-              How long to hold the pointer at the top edge before the island opens, from {OPEN_DELAY_S.min} to
-              {OPEN_DELAY_S.max} seconds. A longer delay prevents accidental opens.
-            </span>
-          </label>
-          <span class="field">
-            <input
-              id="open-delay"
-              type="number"
-              min={OPEN_DELAY_S.min}
-              max={OPEN_DELAY_S.max}
-              step="0.05"
-              value={preferences.value.openDelayMs / 1000}
-              onchange={(event) => setDelay(event, 'openDelayMs', OPEN_DELAY_S)}
-            />
-            <span class="unit">s</span>
-          </span>
-        </div>
-      </div>
             </div>
           {/each}
         </div>
@@ -249,6 +292,72 @@
         <div class="card empty">No widgets installed yet. Put a widget folder into the widgets folder and press Reload.</div>
       {/if}
       {#if info.widgetsDir}<p class="path">{info.widgetsDir}</p>{/if}
+    {:else if section === 'media'}
+      <h1>Media</h1>
+      <p class="intro">
+        Apps that appear in the Windows media controls show up on the island by themselves. Some browsers, such as
+        Yandex Browser, do not publish their media there; the Lizun browser extension brings their tabs in.
+      </p>
+
+      <h2>Browser extension</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text">
+            <div class="label">Browser media</div>
+            <div class="hint">Show music and videos that the Lizun extension finds in browser tabs.</div>
+          </div>
+          <button
+            class="switch"
+            class:on={preferences.value.browserMedia}
+            role="switch"
+            aria-checked={preferences.value.browserMedia}
+            aria-label="Browser media"
+            onclick={toggleBrowserMedia}
+          ><span></span></button>
+        </div>
+        {#if preferences.value.browserMedia}
+          <div class="row">
+            <label class="text" for="browser-media-port">
+              <span class="label">Port</span>
+              <span class="hint">
+                The extension connects here; its popup has to show the same port. From {PORTS.min} to {PORTS.max}.
+              </span>
+            </label>
+            <span class="field">
+              <input
+                id="browser-media-port"
+                class="port"
+                type="number"
+                min={PORTS.min}
+                max={PORTS.max}
+                step="1"
+                value={preferences.value.browserMediaPort}
+                onchange={setPort}
+              />
+            </span>
+          </div>
+          <div class="row">
+            <div class="text">
+              <div class="label">Status</div>
+              <div class="hint status {browserMediaState.tone}">{browserMediaState.text}</div>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      {#if preferences.value.browserMedia}
+        <h2>Setup</h2>
+        <div class="card">
+          <ol class="steps">
+            <li>Install the <b>Lizun</b> browser extension for Chrome, Yandex Browser, Edge, Opera or Firefox.</li>
+            <li>Reload the tabs that were open before the extension was installed.</li>
+            <li>
+              If you changed the port, enter <b>{preferences.value.browserMediaPort}</b> in the extension's popup as
+              well.
+            </li>
+          </ol>
+        </div>
+      {/if}
     {:else}
       <h1>About</h1>
       <div class="card about">
@@ -570,6 +679,42 @@
 
   .switch.on span {
     translate: 18px 0;
+  }
+
+  .intro {
+    margin: -6px 2px 4px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+  }
+
+  .field input.port {
+    width: 76px;
+  }
+
+  .status.ok {
+    color: var(--accent);
+  }
+
+  .status.bad {
+    color: var(--danger);
+  }
+
+  .steps {
+    margin: 0;
+    padding: 14px 16px 14px 34px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+
+  .steps li + li {
+    margin-top: 6px;
+  }
+
+  .steps b {
+    color: var(--text);
+    font-weight: 600;
   }
 
   .error {

@@ -17,8 +17,21 @@ export interface NowPlaying {
 
 export type MediaCommand = 'togglePlayPause' | 'next' | 'previous';
 
+/** A player the source switcher offers (see `PlayerSummary` in src-tauri/src/media.rs). */
+export interface PlayerSummary {
+  key: string;
+  sourceApp: string;
+  title: string;
+  artist: string;
+  playing: boolean;
+  /** The player on the island. */
+  shown: boolean;
+}
+
 class MediaStore {
   nowPlaying = $state<NowPlaying | null>(null);
+  /** Every player that can be shown, in a stable order. */
+  players = $state<PlayerSummary[]>([]);
   artwork = $state<string | null>(null);
   /** Artwork color for the equalizer bars. */
   tint = $state('rgb(255, 255, 255)');
@@ -31,7 +44,14 @@ class MediaStore {
     if (this.#started) return;
     this.#started = true;
     await listen<NowPlaying | null>('media://changed', (update) => void this.#apply(update));
+    await listen<PlayerSummary[]>('media://players', (players) => (this.players = players));
+    this.players = (await invoke<PlayerSummary[]>('media_players')) ?? [];
     await this.#apply(await invoke<NowPlaying | null>('media_snapshot'));
+  }
+
+  /** Shows another player; it stays until some other player starts playing. */
+  select(key: string): Promise<void> {
+    return invoke<void>('media_select', { key });
   }
 
   /** Called after every metadata or artwork change; used to push updates to widgets. */
@@ -73,6 +93,32 @@ class MediaStore {
 }
 
 export const media = new MediaStore();
+
+const SITES: [RegExp, string][] = [
+  [/^music\.yandex\./, 'Yandex Music'],
+  [/^music\.youtube\.com$/, 'YouTube Music'],
+  [/(^|\.)youtube\.com$/, 'YouTube'],
+  [/^open\.spotify\.com$/, 'Spotify'],
+  [/(^|\.)soundcloud\.com$/, 'SoundCloud'],
+  [/(^|\.)vk\.(com|ru)$/, 'VK'],
+  [/(^|\.)twitch\.tv$/, 'Twitch'],
+  [/(^|\.)kick\.com$/, 'Kick'],
+];
+
+/**
+ * A readable name for `sourceApp`: a known site's name, a host name, or the app name inside a
+ * Windows AppUserModelID ("Spotify.exe", "TelegramMessengerLLP.TelegramDesktop_t4vj…!Telegram…").
+ */
+export function sourceName(sourceApp: string): string {
+  for (const [pattern, name] of SITES) if (pattern.test(sourceApp)) return name;
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(sourceApp) && !/\.exe$/i.test(sourceApp)) {
+    return sourceApp; // another site
+  }
+  let app = sourceApp.split('!')[0].replace(/\.exe$/i, '').replace(/_[a-z0-9]{13}$/i, '');
+  if (app.includes('.')) app = app.slice(app.indexOf('.') + 1); // drop the publisher
+  if (app === 'MSEdge') return 'Microsoft Edge';
+  return app || sourceApp;
+}
 
 /** Average color of the cover, lifted so dark covers still give visible bars. */
 async function dominantColor(src: string): Promise<string> {

@@ -18,7 +18,13 @@ function sampleArtwork(): string {
 }
 
 const startedAt = Date.now();
-let mockPreferences: unknown = { islandVisibility: 'always', autoHideDelayMs: 1000, openDelayMs: 100 };
+let mockPreferences: unknown = {
+  islandVisibility: 'always',
+  autoHideDelayMs: 1000,
+  openDelayMs: 100,
+  browserMedia: true,
+  browserMediaPort: 6869,
+};
 
 export async function mockInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   switch (command) {
@@ -44,11 +50,18 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       } as T;
     case 'media_artwork':
       return sampleArtwork() as T;
+    case 'media_players':
+      return [
+        { key: 'browser:1:7:0', sourceApp: 'youtube.com', title: 'Sample video', artist: 'Channel', playing: false, shown: false },
+        { key: 'system:Spotify.exe', sourceApp: 'Spotify.exe', title: 'My Seaside Morning – Vintage Jazz', artist: 'Easy Cat Jazz', playing: true, shown: true },
+      ] as T;
     case 'widgets_list':
     case 'widgets_reload':
       return [] as T;
     case 'app_info':
       return { version: 'preview', widgetsDir: null } as T;
+    case 'browser_media_status':
+      return { enabled: true, port: 6869, listening: true, error: null, browsers: [] } as T;
     default:
       return undefined as T;
   }

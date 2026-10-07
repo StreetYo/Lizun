@@ -9,9 +9,19 @@ export interface Preferences {
   autoHideDelayMs: number;
   /** How long the cursor has to stay on the island before it opens (0–2000 ms). */
   openDelayMs: number;
+  /** Accept media from the Lizun browser extension. */
+  browserMedia: boolean;
+  /** Port the extension connects to (1024–65535). */
+  browserMediaPort: number;
 }
 
-const DEFAULTS: Preferences = { islandVisibility: 'always', autoHideDelayMs: 1000, openDelayMs: 100 };
+const DEFAULTS: Preferences = {
+  islandVisibility: 'always',
+  autoHideDelayMs: 1000,
+  openDelayMs: 100,
+  browserMedia: true,
+  browserMediaPort: 6869,
+};
 
 /** Preferences shared by all windows; changes made anywhere arrive through an event. */
 class PreferencesStore {

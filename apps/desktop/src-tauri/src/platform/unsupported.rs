@@ -3,7 +3,7 @@
 use tauri::WebviewWindow;
 
 use crate::island::Rect;
-use crate::media::{MediaCommand, MediaUpdate};
+use crate::media::{MediaCommand, Player};
 
 pub fn prepare_island_window(_window: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
@@ -24,11 +24,11 @@ pub fn reveal_folder(_path: &std::path::Path) -> std::io::Result<()> {
 pub struct MediaController;
 
 impl MediaController {
-    pub fn send(&self, _command: MediaCommand) -> Result<(), String> {
+    pub fn send(&self, _player_id: &str, _command: MediaCommand) -> Result<(), String> {
         Err("media control is not supported on this platform yet".into())
     }
 }
 
-pub fn spawn_media_watcher(_on_update: impl Fn(MediaUpdate) + Send + 'static) -> Option<MediaController> {
+pub fn spawn_media_watcher(_on_update: impl Fn(Vec<Player>) + Send + 'static) -> Option<MediaController> {
     None
 }

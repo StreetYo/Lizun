@@ -1,11 +1,16 @@
-//! Now playing via Global System Media Transport Controls (SMTC): every app that shows up in
+//! Media sessions via Global System Media Transport Controls (SMTC): every app that shows up in
 //! the Windows media flyout (Spotify, browsers, Apple Music, ...) is visible here.
+//!
+//! Windows' own "current session" is not used: it sticks to sessions that stopped long ago (a
+//! voice message Telegram played days earlier) while another app plays. Every session is
+//! watched instead, and `media::update` picks the one to show.
 
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
+use std::time::Duration;
 
-use base64::Engine;
 use windows::Foundation::TypedEventHandler;
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession as Session,
@@ -15,7 +20,7 @@ use windows::Media::Control::{
 use windows::Storage::Streams::{Buffer, DataReader, InputStreamOptions};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 
-use crate::media::{Artwork, MediaCommand, MediaUpdate, NowPlaying};
+use crate::media::{Artwork, MediaCommand, NowPlaying, Player};
 
 /// Artwork larger than this is ignored; real covers are a few hundred kilobytes at most.
 const MAX_ARTWORK_BYTES: u32 = 8 * 1024 * 1024;
@@ -23,11 +28,14 @@ const MAX_ARTWORK_BYTES: u32 = 8 * 1024 * 1024;
 /// Offset between the Windows epoch (1601) and the Unix epoch, in 100 ns ticks.
 const UNIX_EPOCH_TICKS: i64 = 116_444_736_000_000_000;
 
+/// How often the session list is compared with Windows', in case a change event was missed.
+const RESYNC_INTERVAL: Duration = Duration::from_secs(5);
+
 enum Message {
-    SessionChanged,
-    PropertiesChanged,
+    SessionsChanged,
+    PropertiesChanged(String),
     PlaybackChanged,
-    Command(MediaCommand),
+    Command(String, MediaCommand),
 }
 
 pub struct MediaController {
@@ -35,14 +43,15 @@ pub struct MediaController {
 }
 
 impl MediaController {
-    pub fn send(&self, command: MediaCommand) -> Result<(), String> {
+    /// Sends `command` to the session that `media::Player::id` names.
+    pub fn send(&self, player_id: &str, command: MediaCommand) -> Result<(), String> {
         self.tx
-            .send(Message::Command(command))
+            .send(Message::Command(player_id.to_string(), command))
             .map_err(|_| "the media thread has stopped".to_string())
     }
 }
 
-pub fn spawn_media_watcher(on_update: impl Fn(MediaUpdate) + Send + 'static) -> Option<MediaController> {
+pub fn spawn_media_watcher(on_update: impl Fn(Vec<Player>) + Send + 'static) -> Option<MediaController> {
     let (tx, rx) = mpsc::channel();
     let thread_tx = tx.clone();
     let spawned = thread::Builder::new().name("lizun-media".into()).spawn(move || {
@@ -64,97 +73,121 @@ pub fn spawn_media_watcher(on_update: impl Fn(MediaUpdate) + Send + 'static) -> 
 
 /// All WinRT calls happen on this thread. Event callbacks only post messages back to it, and
 /// bursts of messages are coalesced so a track change produces one update.
-fn watch(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(MediaUpdate)) -> windows::core::Result<()> {
+fn watch(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(Vec<Player>)) -> windows::core::Result<()> {
     let manager = SessionManager::RequestAsync()?.join()?;
-    let session_tx = tx.clone();
-    manager.CurrentSessionChanged(&TypedEventHandler::new(move |_, _| {
-        let _ = session_tx.send(Message::SessionChanged);
+    let sessions_tx = tx.clone();
+    manager.SessionsChanged(&TypedEventHandler::new(move |_, _| {
+        let _ = sessions_tx.send(Message::SessionsChanged);
         Ok(())
     }))?;
 
-    let mut watched: Option<WatchedSession> = None;
-    let mut last: Option<NowPlaying> = None;
-    let mut artwork_key: Option<String> = None;
-    let _ = tx.send(Message::SessionChanged);
+    let mut watched: Vec<WatchedSession> = Vec::new();
+    let mut last: Vec<Player> = Vec::new();
+    let _ = tx.send(Message::SessionsChanged);
 
-    while let Ok(first) = rx.recv() {
-        let mut session_changed = false;
-        let mut properties_changed = false;
-        let mut commands = Vec::new();
-        for message in std::iter::once(first).chain(rx.try_iter()) {
-            match message {
-                Message::SessionChanged => session_changed = true,
-                Message::PropertiesChanged => properties_changed = true,
-                Message::PlaybackChanged => {}
-                Message::Command(command) => commands.push(command),
-            }
-        }
-
-        if session_changed {
-            if let Some(old) = watched.take() {
-                old.unsubscribe();
-            }
-            watched = manager.GetCurrentSession().ok().map(|session| WatchedSession::subscribe(session, &tx));
-            artwork_key = None;
-            properties_changed = true;
-        }
-
-        let Some(current) = &watched else {
-            if last.take().is_some() {
-                on_update(MediaUpdate::NowPlaying(None));
-            }
-            continue;
+    loop {
+        let first = match rx.recv_timeout(RESYNC_INTERVAL) {
+            Ok(message) => Some(message),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(RecvTimeoutError::Disconnected) => break,
         };
+        let mut sessions_changed = first.is_none() && session_keys(&manager)? != keys(&watched);
+        let mut properties_changed = HashSet::new();
+        let mut commands = Vec::new();
+        for message in first.into_iter().chain(rx.try_iter()) {
+            match message {
+                Message::SessionsChanged => sessions_changed = true,
+                Message::PropertiesChanged(key) => {
+                    properties_changed.insert(key);
+                }
+                Message::PlaybackChanged => {}
+                Message::Command(key, command) => commands.push((key, command)),
+            }
+        }
 
-        for command in commands {
-            if let Err(err) = current.execute(command) {
+        if sessions_changed {
+            let mut artwork = HashMap::new();
+            for old in watched.drain(..) {
+                if let Some(cover) = old.unsubscribe() {
+                    artwork.insert(cover.0, cover.1);
+                }
+            }
+            for (key, session) in keyed_sessions(&manager)? {
+                let mut session = WatchedSession::subscribe(key, session, &tx);
+                session.artwork = artwork.remove(&session.key);
+                properties_changed.insert(session.key.clone());
+                watched.push(session);
+            }
+        }
+
+        for (key, command) in commands {
+            let Some(session) = watched.iter().find(|s| s.key == key) else {
+                log::debug!("media command {command:?} for a session that is gone: {key}");
+                continue;
+            };
+            if let Err(err) = session.execute(command) {
                 log::warn!("media command {command:?} failed: {err}");
             }
         }
 
         // The thumbnail often arrives a moment after the title, so it is re-read on every
         // property change and keyed by its content rather than by the track name.
-        if properties_changed {
-            match read_artwork(&current.session) {
-                Ok(Some(artwork)) => {
-                    if artwork_key.as_deref() != Some(artwork.key.as_str()) {
-                        artwork_key = Some(artwork.key.clone());
-                        on_update(MediaUpdate::Artwork(artwork));
+        for session in watched.iter_mut().filter(|s| properties_changed.contains(&s.key)) {
+            match read_artwork(&session.session) {
+                Ok(artwork) => {
+                    if artwork.as_ref().map(|a| &a.key) != session.artwork.as_ref().map(|a| &a.key) {
+                        session.artwork = artwork.map(Arc::new);
                     }
                 }
-                Ok(None) => artwork_key = None,
-                Err(err) => log::debug!("artwork unavailable: {err}"),
+                Err(err) => log::debug!("artwork unavailable for {}: {err}", session.key),
             }
         }
 
-        let snapshot = match read_now_playing(&current.session) {
-            Ok(mut snapshot) => {
-                snapshot.artwork_key = artwork_key.clone();
-                Some(snapshot)
-            }
-            Err(err) => {
-                log::debug!("could not read the media session: {err}");
-                None
-            }
-        };
-        if snapshot != last {
-            last = snapshot.clone();
-            on_update(MediaUpdate::NowPlaying(snapshot));
+        let players: Vec<Player> = watched.iter().filter_map(WatchedSession::player).collect();
+        if players != last {
+            last = players.clone();
+            on_update(players);
         }
     }
     Ok(())
 }
 
+/// Sessions with their player ids. The AppUserModelID is the id; an app with several sessions
+/// gets a counter appended to the later ones.
+fn keyed_sessions(manager: &SessionManager) -> windows::core::Result<Vec<(String, Session)>> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut sessions = Vec::new();
+    for session in manager.GetSessions()? {
+        let app = session.SourceAppUserModelId()?.to_string();
+        let count = seen.entry(app.clone()).or_default();
+        let key = if *count == 0 { app } else { format!("{app}#{count}") };
+        *count += 1;
+        sessions.push((key, session));
+    }
+    Ok(sessions)
+}
+
+fn session_keys(manager: &SessionManager) -> windows::core::Result<Vec<String>> {
+    Ok(keyed_sessions(manager)?.into_iter().map(|(key, _)| key).collect())
+}
+
+fn keys(watched: &[WatchedSession]) -> Vec<String> {
+    watched.iter().map(|s| s.key.clone()).collect()
+}
+
 struct WatchedSession {
+    key: String,
     session: Session,
+    artwork: Option<Arc<Artwork>>,
     tokens: [i64; 3],
 }
 
 impl WatchedSession {
-    fn subscribe(session: Session, tx: &Sender<Message>) -> Self {
+    fn subscribe(key: String, session: Session, tx: &Sender<Message>) -> Self {
         let properties_tx = tx.clone();
+        let properties_key = key.clone();
         let properties = session.MediaPropertiesChanged(&TypedEventHandler::new(move |_, _| {
-            let _ = properties_tx.send(Message::PropertiesChanged);
+            let _ = properties_tx.send(Message::PropertiesChanged(properties_key.clone()));
             Ok(())
         }));
         let playback_tx = tx.clone();
@@ -168,16 +201,20 @@ impl WatchedSession {
             Ok(())
         }));
         Self {
+            key,
             session,
+            artwork: None,
             tokens: [properties.unwrap_or(0), playback.unwrap_or(0), timeline.unwrap_or(0)],
         }
     }
 
-    fn unsubscribe(self) {
+    /// Stops listening and hands back the artwork, so a resubscribed session keeps its cover.
+    fn unsubscribe(self) -> Option<(String, Arc<Artwork>)> {
         let [properties, playback, timeline] = self.tokens;
         let _ = self.session.RemoveMediaPropertiesChanged(properties);
         let _ = self.session.RemovePlaybackInfoChanged(playback);
         let _ = self.session.RemoveTimelinePropertiesChanged(timeline);
+        self.artwork.map(|artwork| (self.key, artwork))
     }
 
     fn execute(&self, command: MediaCommand) -> windows::core::Result<()> {
@@ -189,11 +226,35 @@ impl WatchedSession {
         operation.join()?;
         Ok(())
     }
+
+    /// The session as a player, or `None` if it is stopped or cannot be read.
+    fn player(&self) -> Option<Player> {
+        match read_now_playing(&self.session) {
+            Ok(Some(mut info)) => {
+                info.artwork_key = self.artwork.as_ref().map(|a| a.key.clone());
+                Some(Player { id: self.key.clone(), info, artwork: self.artwork.clone() })
+            }
+            Ok(None) => None,
+            Err(err) => {
+                log::debug!("could not read the media session {}: {err}", self.key);
+                None
+            }
+        }
+    }
 }
 
-fn read_now_playing(session: &Session) -> windows::core::Result<NowPlaying> {
-    let properties = session.TryGetMediaPropertiesAsync()?.join()?;
+fn read_now_playing(session: &Session) -> windows::core::Result<Option<NowPlaying>> {
     let playback = session.GetPlaybackInfo()?;
+    let status = playback.PlaybackStatus()?;
+    // Closed, Opened and Stopped sessions have nothing to show; apps leave them around for days.
+    if !matches!(status, PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Changing) {
+        return Ok(None);
+    }
+    let properties = session.TryGetMediaPropertiesAsync()?.join()?;
+    let title = properties.Title()?.to_string();
+    if title.trim().is_empty() {
+        return Ok(None);
+    }
     let controls = playback.Controls()?;
     let timeline = session.GetTimelineProperties()?;
 
@@ -203,12 +264,12 @@ fn read_now_playing(session: &Session) -> windows::core::Result<NowPlaying> {
     let sampled_at = timeline.LastUpdatedTime()?.UniversalTime;
     let has_timeline = duration > 0;
 
-    Ok(NowPlaying {
+    Ok(Some(NowPlaying {
         source_app: session.SourceAppUserModelId()?.to_string(),
-        title: properties.Title()?.to_string(),
+        title,
         artist: properties.Artist()?.to_string(),
         album: properties.AlbumTitle()?.to_string(),
-        playing: playback.PlaybackStatus()? == PlaybackStatus::Playing,
+        playing: status == PlaybackStatus::Playing,
         position_ms: has_timeline.then(|| ticks_to_ms(position)),
         duration_ms: has_timeline.then(|| ticks_to_ms(duration)),
         position_sampled_at: (has_timeline && sampled_at > UNIX_EPOCH_TICKS)
@@ -217,7 +278,7 @@ fn read_now_playing(session: &Session) -> windows::core::Result<NowPlaying> {
         can_toggle: controls.IsPlayPauseToggleEnabled()?,
         can_next: controls.IsNextEnabled()?,
         can_previous: controls.IsPreviousEnabled()?,
-    })
+    }))
 }
 
 fn read_artwork(session: &Session) -> windows::core::Result<Option<Artwork>> {
@@ -246,15 +307,7 @@ fn read_artwork(session: &Session) -> windows::core::Result<Option<Artwork>> {
             if first.starts_with("image/") { first } else { return Ok(None) }
         }
     };
-    let mut hasher = DefaultHasher::new();
-    bytes.hash(&mut hasher);
-    Ok(Some(Artwork {
-        key: format!("{:016x}", hasher.finish()),
-        data_url: format!(
-            "data:{mime};base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(&bytes)
-        ),
-    }))
+    Ok(Some(Artwork::from_bytes(&mime, &bytes)))
 }
 
 fn sniff_image_type(bytes: &[u8]) -> Option<&'static str> {

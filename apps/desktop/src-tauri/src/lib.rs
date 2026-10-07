@@ -6,6 +6,7 @@ mod preferences;
 mod settings;
 mod system_tray;
 mod widgets;
+mod browser;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,6 +30,9 @@ pub fn run() {
             media::media_snapshot,
             media::media_artwork,
             media::media_control,
+            media::media_players,
+            media::media_select,
+            browser::browser_media_status,
             file_tray::file_tray_allow,
             widgets::widgets_list,
             widgets::widgets_reload,
@@ -45,6 +49,8 @@ pub fn run() {
             island::setup(app)?;
             system_tray::setup(app)?;
             media::start(app.handle());
+            let preferences = preferences::current(app.handle());
+            browser::start(app.handle(), preferences.browser_media, preferences.browser_media_port);
             Ok(())
         })
         .run(tauri::generate_context!())

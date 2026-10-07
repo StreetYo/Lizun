@@ -4,7 +4,8 @@
   import Play from 'phosphor-svelte/lib/Play';
   import SkipBack from 'phosphor-svelte/lib/SkipBack';
   import SkipForward from 'phosphor-svelte/lib/SkipForward';
-  import { media, type MediaCommand } from '../../lib/media.svelte';
+  import ArrowsLeftRight from 'phosphor-svelte/lib/ArrowsLeftRight';
+  import { media, sourceName, type MediaCommand } from '../../lib/media.svelte';
   import { ui } from '../../lib/ui.svelte';
 
   let now = $state(Date.now());
@@ -32,6 +33,17 @@
   function control(command: MediaCommand): void {
     media.control(command).catch((err) => console.warn('media control', err));
   }
+
+  // With several players (music in one tab, a video in another, Spotify...), the switcher
+  // steps through them in a fixed order.
+  const shownIndex = $derived(media.players.findIndex((p) => p.shown));
+  const next = $derived(
+    media.players.length > 1 ? media.players[(shownIndex + 1) % media.players.length] : null,
+  );
+
+  function switchSource(): void {
+    if (next) media.select(next.key).catch((err) => console.warn('media select', err));
+  }
 </script>
 
 <section class="media">
@@ -45,7 +57,7 @@
       {/if}
       <div class="info">
         <div class="title">{np.title || 'Unknown title'}</div>
-        <div class="artist">{np.artist || np.sourceApp}</div>
+        <div class="artist">{np.artist || sourceName(np.sourceApp)}</div>
         <div class="controls">
           <button disabled={!np.canPrevious} onclick={() => control('previous')} title="Previous">
             <SkipBack size={17} weight="fill" />
@@ -56,6 +68,16 @@
           <button disabled={!np.canNext} onclick={() => control('next')} title="Next">
             <SkipForward size={17} weight="fill" />
           </button>
+          {#if next}
+            <button
+              class="source"
+              onclick={switchSource}
+              title={`${sourceName(np.sourceApp)}. Switch to ${sourceName(next.sourceApp)}: ${next.title}`}
+            >
+              <ArrowsLeftRight size={14} weight="bold" />
+              <span>{shownIndex + 1}/{media.players.length}</span>
+            </button>
+          {/if}
         </div>
       </div>
     </div>
@@ -108,6 +130,7 @@
 
   .info {
     display: flex;
+    flex: 1;
     flex-direction: column;
     min-width: 0;
     padding-top: 6px;
@@ -162,6 +185,19 @@
 
   .controls button:disabled {
     color: var(--text-tertiary);
+  }
+
+  .controls .source {
+    display: flex;
+    gap: 4px;
+    width: auto;
+    margin-left: auto;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    background: var(--card);
   }
 
   .progress {
