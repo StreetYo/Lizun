@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
   import ArrowClockwise from 'phosphor-svelte/lib/ArrowClockwise';
+  import DotsSixVertical from 'phosphor-svelte/lib/DotsSixVertical';
   import FolderOpen from 'phosphor-svelte/lib/FolderOpen';
   import GearSix from 'phosphor-svelte/lib/GearSix';
   import Info from 'phosphor-svelte/lib/Info';
@@ -10,6 +11,8 @@
   import { browserMedia } from '../lib/browserMedia.svelte';
   import { invoke, isTauri } from '../lib/platform';
   import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
+  import { Reorder } from '../lib/reorder.svelte';
+  import { BUILT_IN_WIDGETS, moveWidget, setWidgetEnabled, widgetLayout } from '../lib/widgets/layout.svelte';
   import type { SettingSpec, SettingValue, WidgetManifest } from '../lib/widgets/registry.svelte';
   import { widgetSettings } from '../lib/widgets/settings.svelte';
 
@@ -26,10 +29,8 @@
   ];
 
   const BUILT_IN = [
-    { name: 'Now Playing', description: 'Cover, playback controls and progress of the current track' },
-    { name: 'Mirror', description: 'Camera preview, off as soon as the island closes' },
-    { name: 'Calendar', description: 'The week around today' },
-    { name: 'Files Tray', description: 'Drop files on the island to keep them at hand' },
+    ...BUILT_IN_WIDGETS,
+    { id: 'tray', name: 'Files Tray', description: 'Drop files on the island to keep them at hand' },
   ];
 
   const PERMISSIONS: Record<string, string> = {
@@ -176,6 +177,44 @@
       await widgetSettings.reset(widget.id);
     } catch (err) {
       error = `Could not reset the settings: ${err}`;
+    }
+  }
+
+  const layout = $derived(widgetLayout(widgets, preferences.value.widgets));
+  let layoutList = $state<HTMLElement>();
+  const reorder = new Reorder('y', 0, (from, to) => void moveLayout(from, to));
+
+  function layoutRows(): HTMLElement[] {
+    return [...(layoutList?.querySelectorAll<HTMLElement>('.layout-row') ?? [])];
+  }
+
+  async function moveLayout(from: number, to: number, refocus = false): Promise<void> {
+    error = null;
+    try {
+      await moveWidget(layout, from, to);
+    } catch (err) {
+      error = `Could not save the order: ${err}`;
+    }
+    // The row was moved in the page, which takes the focus away from its handle.
+    if (refocus) {
+      await tick();
+      layoutRows()[to]?.querySelector<HTMLElement>('.grip')?.focus();
+    }
+  }
+
+  function layoutKey(event: KeyboardEvent, index: number): void {
+    const to = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : null;
+    if (to === null) return;
+    event.preventDefault();
+    if (to >= 0 && to < layout.length) void moveLayout(index, to, true);
+  }
+
+  async function toggleWidget(id: string, enabled: boolean): Promise<void> {
+    error = null;
+    try {
+      await setWidgetEnabled(layout, id, enabled);
+    } catch (err) {
+      error = `Could not save the setting: ${err}`;
     }
   }
 
@@ -368,9 +407,45 @@
         </div>
       </div>
 
+      <h2>In the island</h2>
+      <div class="card" class:instant={reorder.instant} bind:this={layoutList}>
+        {#each layout as entry, index (entry.id)}
+          <div
+            class="row layout-row"
+            class:dragged={reorder.dragging === index}
+            class:off={!entry.enabled}
+            style:translate="0 {reorder.offset(index)}px"
+          >
+            <button
+              class="grip"
+              aria-label="Move {entry.name}. Use the up and down arrows."
+              title="Drag to change the order"
+              onpointerdown={(event) => reorder.start(event, index, layoutRows())}
+              onpointermove={(event) => reorder.move(event)}
+              onpointerup={(event) => reorder.end(event)}
+              onpointercancel={(event) => reorder.end(event)}
+              onkeydown={(event) => layoutKey(event, index)}
+            ><DotsSixVertical size={18} weight="bold" /></button>
+            <div class="text">
+              <div class="label">{entry.name}</div>
+              <div class="hint">{entry.description}</div>
+            </div>
+            <button
+              class="switch"
+              class:on={entry.enabled}
+              role="switch"
+              aria-checked={entry.enabled}
+              aria-label="Show {entry.name}"
+              onclick={() => toggleWidget(entry.id, !entry.enabled)}
+            ><span></span></button>
+          </div>
+        {/each}
+      </div>
+      <p class="note">Drag to change the order. You can also arrange widgets in the island itself with the pencil button.</p>
+
       <h2>Built in</h2>
       <div class="card">
-        {#each BUILT_IN as widget (widget.name)}
+        {#each BUILT_IN as widget (widget.id)}
           <div class="row">
             <div class="text">
               <div class="label">{widget.name}</div>
@@ -818,6 +893,51 @@
 
   .field input.port {
     width: 76px;
+  }
+
+  .layout-row {
+    position: relative;
+    gap: 10px;
+    padding-left: 8px;
+    background: var(--card);
+    transition: translate 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .layout-row.dragged {
+    z-index: 1;
+    background: var(--card-raised);
+    transition: none;
+  }
+
+  .instant .layout-row {
+    transition: none;
+  }
+
+  .layout-row.off .label {
+    color: var(--text-secondary);
+  }
+
+  .grip {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 32px;
+    border-radius: 6px;
+    color: var(--text-tertiary);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .grip:hover,
+  .grip:focus-visible {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+    outline: none;
+  }
+
+  .dragged .grip {
+    cursor: grabbing;
   }
 
   /* A widget's own settings, listed under it. */

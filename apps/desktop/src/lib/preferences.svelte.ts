@@ -3,6 +3,12 @@ import { invoke, listen } from './platform';
 /** How the island looks while collapsed (see src-tauri/src/preferences.rs). */
 export type IslandVisibility = 'always' | 'autoHide' | 'hidden';
 
+/** A widget's place in the island (see src-tauri/src/preferences.rs). */
+export interface WidgetSlot {
+  id: string;
+  enabled: boolean;
+}
+
 export interface Preferences {
   islandVisibility: IslandVisibility;
   /** How long the mini island stays in "hide after a delay" mode (200–10000 ms). */
@@ -15,6 +21,8 @@ export interface Preferences {
   browserMedia: boolean;
   /** Port the extension connects to (1024–65535). */
   browserMediaPort: number;
+  /** Order of the widgets in the island and which of them are shown (see lib/widgets/layout.svelte.ts). */
+  widgets: WidgetSlot[];
 }
 
 const DEFAULTS: Preferences = {
@@ -24,6 +32,7 @@ const DEFAULTS: Preferences = {
   openDelayMs: 100,
   browserMedia: true,
   browserMediaPort: 6869,
+  widgets: [],
 };
 
 /** Preferences shared by all windows; changes made anywhere arrive through an event. */
@@ -38,8 +47,17 @@ class PreferencesStore {
     this.loaded = true;
   }
 
+  /** The change shows at once (a dropped widget must not jump back while it is saved) and is
+   * undone if saving fails. */
   async update(patch: Partial<Preferences>): Promise<void> {
-    this.value = await invoke<Preferences>('preferences_set', { preferences: { ...this.value, ...patch } });
+    const previous = this.value;
+    this.value = { ...previous, ...patch };
+    try {
+      this.value = await invoke<Preferences>('preferences_set', { preferences: this.value });
+    } catch (err) {
+      this.value = previous;
+      throw err;
+    }
   }
 }
 

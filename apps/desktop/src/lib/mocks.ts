@@ -25,6 +25,7 @@ let mockPreferences: unknown = {
   openDelayMs: 100,
   browserMedia: true,
   browserMediaPort: 6869,
+  widgets: [],
 };
 
 /** Widgets the preview lists; empty, but a test can push manifests into it. */

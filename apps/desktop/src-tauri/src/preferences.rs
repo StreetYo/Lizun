@@ -31,6 +31,18 @@ pub const AUTO_HIDE_DELAY_MS: std::ops::RangeInclusive<u32> = 200..=10_000;
 pub const OPEN_DELAY_MS: std::ops::RangeInclusive<u32> = 0..=2_000;
 /// Ports below 1024 are for system services.
 pub const BROWSER_MEDIA_PORTS: std::ops::RangeInclusive<u16> = 1024..=65_535;
+/// Limits for the widget list, which only ever holds ids the user has seen in the island.
+const MAX_WIDGET_SLOTS: usize = 256;
+const MAX_WIDGET_ID_LEN: usize = 80;
+
+/// A widget's place in the island and whether it is shown. Built-in widgets use ids such as
+/// `builtin:media`, which an installed widget cannot take.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetSlot {
+    pub id: String,
+    pub enabled: bool,
+}
 
 /// Unknown fields are ignored and missing ones take their defaults, so files written by other
 /// versions still load.
@@ -48,6 +60,10 @@ pub struct Preferences {
     pub browser_media: bool,
     /// Port the extension connects to; its popup must show the same one.
     pub browser_media_port: u16,
+    /// Order of the widgets in the island. Widgets missing from the list are shown after the
+    /// listed ones; ids of widgets that are not installed right now are kept, so a widget
+    /// that comes back takes its old place.
+    pub widgets: Vec<WidgetSlot>,
 }
 
 impl Default for Preferences {
@@ -59,6 +75,7 @@ impl Default for Preferences {
             open_delay_ms: 100,
             browser_media: true,
             browser_media_port: crate::browser::DEFAULT_PORT,
+            widgets: Vec::new(),
         }
     }
 }
@@ -70,6 +87,11 @@ impl Preferences {
         self.open_delay_ms = self.open_delay_ms.clamp(*OPEN_DELAY_MS.start(), *OPEN_DELAY_MS.end());
         self.browser_media_port =
             self.browser_media_port.clamp(*BROWSER_MEDIA_PORTS.start(), *BROWSER_MEDIA_PORTS.end());
+        let mut seen = std::collections::HashSet::new();
+        self.widgets.retain(|slot| {
+            !slot.id.is_empty() && slot.id.len() <= MAX_WIDGET_ID_LEN && seen.insert(slot.id.clone())
+        });
+        self.widgets.truncate(MAX_WIDGET_SLOTS);
         self
     }
 }
@@ -148,10 +170,11 @@ mod tests {
             open_delay_ms: 400,
             browser_media: false,
             browser_media_port: 7000,
+            widgets: vec![WidgetSlot { id: "builtin:media".into(), enabled: false }],
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000}"#
+            r#"{"islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}]}"#
         );
     }
 
@@ -168,5 +191,27 @@ mod tests {
     fn keeps_the_browser_media_port_out_of_system_ports() {
         let system_port = Preferences { browser_media_port: 80, ..Preferences::default() };
         assert_eq!(system_port.clamped().browser_media_port, 1024);
+    }
+
+    #[test]
+    fn cleans_up_the_widget_list() {
+        let slot = |id: &str, enabled| WidgetSlot { id: id.into(), enabled };
+        let messy = Preferences {
+            widgets: vec![
+                slot("builtin:calendar", true),
+                slot("", true),
+                slot("builtin:calendar", false),
+                slot(&"x".repeat(MAX_WIDGET_ID_LEN + 1), true),
+                slot("todo", false),
+            ],
+            ..Preferences::default()
+        };
+        assert_eq!(messy.clamped().widgets, vec![slot("builtin:calendar", true), slot("todo", false)]);
+
+        let many = Preferences {
+            widgets: (0..MAX_WIDGET_SLOTS + 10).map(|i| slot(&format!("widget-{i}"), true)).collect(),
+            ..Preferences::default()
+        };
+        assert_eq!(many.clamped().widgets.len(), MAX_WIDGET_SLOTS);
     }
 }
