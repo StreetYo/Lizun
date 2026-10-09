@@ -154,7 +154,7 @@
   const PORTS = { min: 1024, max: 65535 };
 
   async function toggle(
-    key: 'browserMedia' | 'showOnMediaChange' | 'clipboardHistory' | 'clipboardLimitEnabled',
+    key: 'browserMedia' | 'showOnMediaChange' | 'clipboardHistory' | 'clipboardLimitEnabled' | ClipboardKind,
   ): Promise<void> {
     error = null;
     try {
@@ -189,6 +189,15 @@
     { hours: 720, label: 'month' },
     { hours: 0, label: 'forever' },
   ] as const;
+  /** Kinds of clips the history can keep, each with its own switch. */
+  const CLIPBOARD_KINDS = [
+    { key: 'clipboardText', label: 'text' },
+    { key: 'clipboardPictures', label: 'pictures' },
+    { key: 'clipboardFiles', label: 'files' },
+  ] as const;
+  type ClipboardKind = (typeof CLIPBOARD_KINDS)[number]['key'];
+  /** The last kind that is on cannot be turned off; the history switch does that. */
+  const lastKind = $derived(CLIPBOARD_KINDS.filter((kind) => preferences.value[kind.key]).length === 1);
   /** Allowed limit range; it matches src-tauri/src/preferences.rs. */
   const CLIPBOARD_LIMIT = { min: 1, max: 1000 };
   let confirmClear = $state(false);
@@ -829,7 +838,33 @@
             onclick={() => toggle('clipboardHistory')}
           ><span></span></button>
         </div>
-        {#if preferences.value.clipboardHistory}
+      </div>
+      {#if preferences.value.clipboardHistory}
+        <h2>{t('settings.clipboard.kinds')}</h2>
+        <div class="card">
+          {#each CLIPBOARD_KINDS as kind (kind.key)}
+            {@const on = preferences.value[kind.key]}
+            <div class="row">
+              <div class="text">
+                <div class="label">{t(`settings.clipboard.${kind.label}`)}</div>
+                <div class="hint">{t(`settings.clipboard.${kind.label}Hint`)}</div>
+              </div>
+              <button
+                class="switch"
+                class:on
+                role="switch"
+                aria-checked={on}
+                aria-label={t(`settings.clipboard.${kind.label}`)}
+                disabled={on && lastKind}
+                onclick={() => toggle(kind.key)}
+              ><span></span></button>
+            </div>
+          {/each}
+        </div>
+        <p class="note">{t('settings.clipboard.kindsNote')}</p>
+
+        <h2>{t('settings.clipboard.storage')}</h2>
+        <div class="card">
           <div class="row">
             <label class="text" for="clipboard-lifetime">
               <span class="label">{t('settings.clipboard.keep')}</span>
@@ -907,8 +942,8 @@
               </button>
             {/if}
           </div>
-        {/if}
-      </div>
+        </div>
+      {/if}
       <p class="note">{t('settings.clipboard.private')}</p>
     {:else}
       <h1>{t('settings.about.title')}</h1>
@@ -1231,6 +1266,10 @@
 
   .switch.on {
     background: var(--accent);
+  }
+
+  .switch:disabled {
+    opacity: 0.45;
   }
 
   .switch.on span {

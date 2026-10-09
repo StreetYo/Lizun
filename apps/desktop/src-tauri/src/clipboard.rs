@@ -50,6 +50,16 @@ pub enum Clip {
     Files(Vec<String>),
 }
 
+/// Which kinds of clips the history keeps. A clip counts as its first kind in the order files,
+/// text, picture, so files that come with their paths as text are not kept as text when files
+/// are turned off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Kinds {
+    pub text: bool,
+    pub pictures: bool,
+    pub files: bool,
+}
+
 /// 8-bit RGBA pixels, row by row from the top.
 pub struct Picture {
     pub width: u32,
@@ -77,6 +87,14 @@ enum Content {
 }
 
 impl Content {
+    fn is_allowed(&self, kinds: Kinds) -> bool {
+        match self {
+            Content::Text { .. } => kinds.text,
+            Content::Picture { .. } => kinds.pictures,
+            Content::Files { .. } => kinds.files,
+        }
+    }
+
     fn is_copy_of(&self, clip: &Clip, hash: u64) -> bool {
         match (self, clip) {
             (Content::Text { text }, Clip::Text(new)) => text == new,
@@ -123,6 +141,7 @@ struct FileView {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Rules {
     enabled: bool,
+    kinds: Kinds,
     lifetime: Option<Duration>,
     limit: Option<usize>,
 }
@@ -132,6 +151,11 @@ impl Rules {
         let hours = u64::from(preferences.clipboard_lifetime_hours);
         Self {
             enabled: preferences.clipboard_history,
+            kinds: Kinds {
+                text: preferences.clipboard_text,
+                pictures: preferences.clipboard_pictures,
+                files: preferences.clipboard_files,
+            },
             lifetime: (hours > 0).then(|| Duration::from_secs(hours * 3600)),
             limit: preferences.clipboard_limit_enabled.then_some(preferences.clipboard_limit as usize),
         }
@@ -183,7 +207,7 @@ pub fn start(app: &AppHandle) {
 }
 
 /// Called after the preferences change: a shorter lifetime or a lower limit applies at once,
-/// and turning the history off deletes it.
+/// and turning the history or a kind of clip off deletes those entries.
 pub fn configure(app: &AppHandle, preferences: &Preferences) {
     let Some(history) = app.try_state::<History>() else { return };
     let changed = {
@@ -229,13 +253,14 @@ fn run(app: &AppHandle, wakes: Receiver<()>) {
         if seen == Some(sequence) {
             continue;
         }
-        if !history.state.lock().unwrap().rules.enabled {
+        let rules = history.state.lock().unwrap().rules;
+        if !rules.enabled {
             // What was copied while the history was off is not picked up later.
             seen = Some(sequence);
             continue;
         }
         // While another app has the clipboard open, try again on the next tick.
-        let Ok(clip) = crate::platform::read_clipboard() else { continue };
+        let Ok(clip) = crate::platform::read_clipboard(rules.kinds) else { continue };
         seen = Some(sequence);
         if let Some(clip) = clip {
             record(app, &history, clip);
@@ -321,7 +346,7 @@ impl State {
         for (at, entry) in std::mem::take(&mut self.index.entries).into_iter().enumerate() {
             let expired = rules.lifetime.is_some_and(|lifetime| now - entry.copied_at > lifetime.as_millis() as i64);
             let over_limit = rules.limit.is_some_and(|limit| at >= limit);
-            if !rules.enabled || expired || over_limit {
+            if !rules.enabled || !entry.content.is_allowed(rules.kinds) || expired || over_limit {
                 dropped.push(entry);
             } else {
                 kept.push(entry);
@@ -551,6 +576,8 @@ mod tests {
         Entry { id, copied_at, content: Content::Text { text: format!("text {id}") } }
     }
 
+    const ALL: Kinds = Kinds { text: true, pictures: true, files: true };
+
     fn state(entries: Vec<Entry>, rules: Rules) -> State {
         State { index: Index { next_id: 100, entries }, rules, dir: None }
     }
@@ -562,28 +589,38 @@ mod tests {
         let entries = vec![text(3, now), text(2, now - hour / 2), text(1, now - 2 * hour)];
         let mut by_age = state(
             entries.clone(),
-            Rules { enabled: true, lifetime: Some(Duration::from_secs(3600)), limit: None },
+            Rules { enabled: true, kinds: ALL, lifetime: Some(Duration::from_secs(3600)), limit: None },
         );
         assert!(by_age.apply_rules());
         assert_eq!(by_age.index.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [3, 2]);
 
-        let mut by_count = state(entries.clone(), Rules { enabled: true, lifetime: None, limit: Some(1) });
+        let mut by_count = state(entries.clone(), Rules { enabled: true, kinds: ALL, lifetime: None, limit: Some(1) });
         assert!(by_count.apply_rules());
         assert_eq!(by_count.index.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [3]);
 
-        let mut unlimited = state(entries.clone(), Rules { enabled: true, lifetime: None, limit: None });
+        let mut unlimited = state(entries.clone(), Rules { enabled: true, kinds: ALL, lifetime: None, limit: None });
         assert!(!unlimited.apply_rules());
         assert_eq!(unlimited.index.entries.len(), 3);
 
-        let mut off = state(entries, Rules { enabled: false, lifetime: None, limit: None });
+        let mut off = state(entries, Rules { enabled: false, kinds: ALL, lifetime: None, limit: None });
         assert!(off.apply_rules());
         assert!(off.index.entries.is_empty());
     }
 
     #[test]
+    fn drops_the_kinds_turned_off() {
+        let files = Entry { id: 2, copied_at: now_ms(), content: Content::Files { paths: vec!["C:\\a".into()] } };
+        let entries = vec![files, text(1, now_ms())];
+        let kinds = Kinds { files: false, ..ALL };
+        let mut no_files = state(entries, Rules { enabled: true, kinds, lifetime: None, limit: None });
+        assert!(no_files.apply_rules());
+        assert_eq!(no_files.index.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [1]);
+    }
+
+    #[test]
     fn previews_the_start_of_long_texts() {
         let long = "ё".repeat(PREVIEW_CHARS + 5);
-        let state = state(vec![], Rules { enabled: true, lifetime: None, limit: None });
+        let state = state(vec![], Rules { enabled: true, kinds: ALL, lifetime: None, limit: None });
         let view = state.view(&Entry { id: 1, copied_at: 0, content: Content::Text { text: long } });
         let Preview::Text { text, cut } = view.preview else { panic!("a text") };
         assert!(cut);
@@ -594,7 +631,7 @@ mod tests {
     fn previews_the_first_files() {
         let existing = std::env::temp_dir().display().to_string();
         let paths = vec![existing.clone(), "Z:\\gone\\a.txt".into(), "b".into(), "c".into(), "d".into()];
-        let state = state(vec![], Rules { enabled: true, lifetime: None, limit: None });
+        let state = state(vec![], Rules { enabled: true, kinds: ALL, lifetime: None, limit: None });
         let view = state.view(&Entry { id: 1, copied_at: 0, content: Content::Files { paths } });
         let Preview::Files { files, count } = view.preview else { panic!("files") };
         assert_eq!((files.len(), count), (PREVIEW_FILES, 5));

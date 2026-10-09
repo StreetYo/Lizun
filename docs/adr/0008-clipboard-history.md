@@ -24,7 +24,8 @@ place for things kept at hand (the file tray), so the history belongs there as a
   twice a second, which costs nothing, and reads only when it changes. Files come first
   (`CF_HDROP`, which Explorer and most apps put there; some add the paths as text too), then
   text, then a picture from the PNG format (keeps transparency) or the bitmap. Other formats
-  are not kept.
+  are not kept. A copy counts as its first kind only: when that kind is turned off, nothing is
+  kept, so files that come with their paths as text do not turn into a text entry.
 - **Files are kept as their paths**, like the file tray; the files stay where they are. A click
   puts the paths that still exist back on the clipboard as a copy (`Preferred DropEffect` set
   to copy), so pasting in Explorer, a messenger or a mail copies the files again. Files that
@@ -37,7 +38,9 @@ place for things kept at hand (the file tray), so the history belongs there as a
   `CanIncludeInClipboardHistory` set to 0, the formats password managers add and Windows' own
   history honours. Texts over 1 MB and pictures over 40 megapixels are skipped.
 - **Settings** (Settings > Clipboard, stored in `preferences.json`): the history on or off (on
-  by default; turning it off deletes it), how long entries stay (1 hour, 1 day by default, 1 week,
+  by default; turning it off deletes it), which kinds it keeps (text, pictures and files, each
+  with its own switch, all on by default; turning one off deletes its entries, and the last one
+  cannot be turned off), how long entries stay (1 hour, 1 day by default, 1 week,
   30 days or forever) and a limit on the number of entries (on by default, 50, from 1 to 1000),
   which can be turned off. Lifetime and limit work together: an entry goes as soon as either
   rule says so. Expired entries are dropped every 30 seconds and whenever the settings change.

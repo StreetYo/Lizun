@@ -12,7 +12,7 @@ use windows::Win32::System::DataExchange::{
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock};
 use windows::core::{PCWSTR, w};
 
-use crate::clipboard::{Clip, MAX_PIXELS, Picture, decode_png};
+use crate::clipboard::{Clip, Kinds, MAX_PIXELS, Picture, decode_png};
 
 /// Standard formats; `windows` keeps them in a large module of its own.
 const CF_DIB: u32 = 8;
@@ -31,21 +31,32 @@ pub fn clipboard_sequence() -> u32 {
 }
 
 /// What is on the clipboard: files, or else text, or else a picture. Files come first, since
-/// some apps add their paths as text as well. `Ok(None)` when it holds neither, or the
-/// app that copied it asked clipboard managers to leave it alone (password managers do).
+/// some apps add their paths as text as well. `Ok(None)` when it holds none of them, when its
+/// first kind is not among `kinds`, or when the app that copied it asked clipboard managers to
+/// leave it alone (password managers do).
 /// `Err` while another app keeps the clipboard open, so the caller tries again later.
-pub fn read_clipboard() -> Result<Option<Clip>, ()> {
+pub fn read_clipboard(kinds: Kinds) -> Result<Option<Clip>, ()> {
     let _open = Opened::new(None).ok_or(())?;
     if is_private() {
         return Ok(None);
     }
-    if let Some(paths) = data(CF_HDROP).and_then(|list| parse_drop_files(&list)) {
-        return Ok(Some(Clip::Files(paths)));
+    // SAFETY: no preconditions; the format numbers are standard.
+    let available = |format: u32| unsafe { IsClipboardFormatAvailable(format) }.is_ok();
+    if available(CF_HDROP) {
+        let paths = kinds.files.then(|| data(CF_HDROP)).flatten().and_then(|list| parse_drop_files(&list));
+        return Ok(paths.map(Clip::Files));
     }
-    if let Some(text) = data(CF_UNICODETEXT) {
+    if available(CF_UNICODETEXT) {
+        if !kinds.text {
+            return Ok(None);
+        }
+        let Some(text) = data(CF_UNICODETEXT) else { return Ok(None) };
         let units: Vec<u16> = text.as_chunks::<2>().0.iter().map(|&pair| u16::from_le_bytes(pair)).collect();
         let end = units.iter().position(|&unit| unit == 0).unwrap_or(units.len());
         return Ok(Some(Clip::Text(String::from_utf16_lossy(&units[..end]))));
+    }
+    if !kinds.pictures {
+        return Ok(None);
     }
     // Browsers and Office also offer PNG, which keeps transparency.
     let png = format(w!("PNG")).and_then(data).and_then(|bytes| decode_png(&bytes));

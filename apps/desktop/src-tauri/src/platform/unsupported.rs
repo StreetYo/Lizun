@@ -2,7 +2,7 @@
 
 use tauri::WebviewWindow;
 
-use crate::clipboard::{Clip, Picture};
+use crate::clipboard::{Clip, Kinds, Picture};
 use crate::island::Rect;
 use crate::media::{MediaCommand, Player};
 
@@ -60,7 +60,7 @@ pub fn clipboard_sequence() -> u32 {
     0
 }
 
-pub fn read_clipboard() -> Result<Option<Clip>, ()> {
+pub fn read_clipboard(_kinds: Kinds) -> Result<Option<Clip>, ()> {
     Ok(None)
 }
 

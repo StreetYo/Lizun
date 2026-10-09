@@ -70,8 +70,12 @@ pub struct Preferences {
     /// listed ones; ids of widgets that are not installed right now are kept, so a widget
     /// that comes back takes its old place.
     pub widgets: Vec<WidgetSlot>,
-    /// Keep a history of copied text and pictures for the island's Clipboard tab.
+    /// Keep a history of copied text, pictures and files for the island's Clipboard tab.
     pub clipboard_history: bool,
+    /// Which kinds of clips the history keeps.
+    pub clipboard_text: bool,
+    pub clipboard_pictures: bool,
+    pub clipboard_files: bool,
     /// How long history entries stay, in hours; 0 keeps them until the limit pushes them out.
     pub clipboard_lifetime_hours: u32,
     /// Whether the history keeps at most `clipboard_limit` entries.
@@ -91,6 +95,9 @@ impl Default for Preferences {
             browser_media_port: crate::browser::DEFAULT_PORT,
             widgets: Vec::new(),
             clipboard_history: true,
+            clipboard_text: true,
+            clipboard_pictures: true,
+            clipboard_files: true,
             clipboard_lifetime_hours: 24,
             clipboard_limit_enabled: true,
             clipboard_limit: 50,
@@ -199,13 +206,16 @@ mod tests {
             browser_media_port: 7000,
             widgets: vec![WidgetSlot { id: "builtin:media".into(), enabled: false }],
             clipboard_history: false,
+            clipboard_text: true,
+            clipboard_pictures: false,
+            clipboard_files: true,
             clipboard_lifetime_hours: 0,
             clipboard_limit_enabled: false,
             clipboard_limit: 200,
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}],"clipboardHistory":false,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200}"#
+            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200}"#
         );
     }
 
@@ -236,6 +246,7 @@ mod tests {
     fn keeps_the_clipboard_history_settings_in_range() {
         let empty: Preferences = serde_json::from_str("{}").unwrap();
         assert!(empty.clipboard_history && empty.clipboard_limit_enabled);
+        assert!(empty.clipboard_text && empty.clipboard_pictures && empty.clipboard_files);
         assert_eq!((empty.clipboard_lifetime_hours, empty.clipboard_limit), (24, 50));
         let wild = Preferences { clipboard_lifetime_hours: 100_000, clipboard_limit: 0, ..Preferences::default() }.clamped();
         assert_eq!((wild.clipboard_lifetime_hours, wild.clipboard_limit), (8_760, 1));

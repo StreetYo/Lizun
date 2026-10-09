@@ -27,6 +27,10 @@ export interface Preferences {
   widgets: WidgetSlot[];
   /** Keep a history of copied text and pictures for the island's Clipboard tab. */
   clipboardHistory: boolean;
+  /** Which kinds of clips the history keeps. A copy counts as its first kind: files, text, picture. */
+  clipboardText: boolean;
+  clipboardPictures: boolean;
+  clipboardFiles: boolean;
   /** How long history entries stay, in hours (0–8760); 0 keeps them until the limit pushes them out. */
   clipboardLifetimeHours: number;
   /** Whether the history keeps at most `clipboardLimit` entries. */
@@ -45,6 +49,9 @@ const DEFAULTS: Preferences = {
   browserMediaPort: 6869,
   widgets: [],
   clipboardHistory: true,
+  clipboardText: true,
+  clipboardPictures: true,
+  clipboardFiles: true,
   clipboardLifetimeHours: 24,
   clipboardLimitEnabled: true,
   clipboardLimit: 50,
