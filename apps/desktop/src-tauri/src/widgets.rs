@@ -7,6 +7,7 @@
 //! permissions declared in the manifest. Network access is limited by a CSP built from the
 //! manifest's `network` list.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::RwLock;
@@ -22,6 +23,9 @@ pub const EVENT_CHANGED: &str = "widgets://changed";
 /// Path prefix for files shared by all widgets: the SDK module and the base stylesheet.
 const SDK_PREFIX: &str = "__sdk";
 pub(crate) const MANIFEST_FILE: &str = "manifest.json";
+
+/// More translations than this in one manifest are refused.
+const MAX_LOCALES: usize = 64;
 
 /// Permissions a widget can request. The island refuses SDK calls that need anything else.
 pub const KNOWN_PERMISSIONS: &[&str] = &["media:read", "media:control", "storage", "activity"];
@@ -49,6 +53,23 @@ pub struct WidgetManifest {
     /// Options the user changes in the settings window.
     #[serde(default)]
     pub settings: Vec<crate::widget_settings::SettingSpec>,
+    /// Translations of the texts above by language code, such as `ru`; the island picks the
+    /// one for the user's language and keeps the manifest's own texts for anything left out.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub locales: BTreeMap<String, ManifestTexts>,
+}
+
+/// A manifest's texts in one language (see docs/widgets.md#languages).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ManifestTexts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// By setting key.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub settings: BTreeMap<String, crate::widget_settings::SettingTexts>,
 }
 
 fn default_entry() -> String {
@@ -224,7 +245,21 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
     if let Some(setting) = manifest.settings.iter().find(|setting| setting.picks_file()) {
         return Err(format!("setting {:?}: installed widgets cannot ask for files", setting.key()));
     }
-    crate::widget_settings::validate(&manifest.settings)
+    crate::widget_settings::validate(&manifest.settings)?;
+    if manifest.locales.len() > MAX_LOCALES {
+        return Err(format!("more than {MAX_LOCALES} locales"));
+    }
+    for (code, texts) in &manifest.locales {
+        let code_ok = (2..=12).contains(&code.len())
+            && code.starts_with(|c: char| c.is_ascii_lowercase())
+            && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        if !code_ok {
+            return Err(format!("invalid locale {code:?}: use a language code such as ru or pt-BR"));
+        }
+        crate::widget_settings::validate_texts(&manifest.settings, &texts.settings)
+            .map_err(|err| format!("locale {code:?}: {err}"))?;
+    }
+    Ok(())
 }
 
 /// Accepts `https://host[:port]` with an optional leading `*.` wildcard, nothing else, so a
@@ -363,6 +398,7 @@ mod tests {
             permissions: vec!["media:read".into()],
             network: vec![],
             settings: vec![],
+            locales: BTreeMap::new(),
         }
     }
 
@@ -403,6 +439,40 @@ mod tests {
         .unwrap();
         assert!(crate::widget_settings::validate(&picker.settings).is_ok());
         assert!(validate(&picker).unwrap_err().contains("cannot ask for files"));
+    }
+
+    #[test]
+    fn checks_translations_against_the_settings() {
+        let parse = |locales: serde_json::Value| {
+            let mut widget = manifest("dev.lizun.hello");
+            widget.settings = serde_json::from_value(serde_json::json!([
+                { "key": "units", "type": "select", "label": "Units", "default": "c",
+                  "options": [{ "value": "c", "label": "Celsius" }, { "value": "f", "label": "Fahrenheit" }] },
+                { "key": "every", "type": "number", "label": "Every", "default": 5, "min": 1, "max": 9, "unit": "min" }
+            ]))
+            .unwrap();
+            widget.locales = serde_json::from_value(locales).map_err(|e| e.to_string())?;
+            validate(&widget)
+        };
+        let russian = serde_json::json!({ "ru": {
+            "name": "Погода",
+            "settings": {
+                "units": { "label": "Единицы", "options": { "c": "Цельсий" } },
+                "every": { "unit": "мин" }
+            }
+        }});
+        assert!(parse(russian).is_ok());
+        let bad = [
+            serde_json::json!({ "Russian": { "name": "Погода" } }),
+            serde_json::json!({ "ru": { "title": "Погода" } }),
+            serde_json::json!({ "ru": { "settings": { "missing": { "label": "Нет" } } } }),
+            serde_json::json!({ "ru": { "settings": { "units": { "options": { "k": "Кельвин" } } } } }),
+            serde_json::json!({ "ru": { "settings": { "units": { "unit": "°" } } } }),
+            serde_json::json!({ "ru": { "settings": { "every": { "label": "" } } } }),
+        ];
+        for locales in bad {
+            assert!(parse(locales.clone()).is_err(), "{locales} should be rejected");
+        }
     }
 
     #[test]

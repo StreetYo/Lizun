@@ -1,6 +1,7 @@
 mod calendar;
 mod file_tray;
 mod http;
+mod i18n;
 mod ics;
 mod island;
 mod media;
@@ -56,11 +57,13 @@ pub fn run() {
             settings::settings_open,
             settings::app_info,
             settings::app_quit,
+            i18n::i18n_system_language,
             preferences::preferences_get,
             preferences::preferences_set,
         ])
         .setup(|app| {
             preferences::init(app.handle());
+            i18n::apply(app.handle(), &preferences::current(app.handle()).language);
             widgets::init(app.handle());
             widget_install::init(app.handle());
             widget_settings::init(app.handle());

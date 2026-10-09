@@ -3,6 +3,7 @@
   import PencilSimple from 'phosphor-svelte/lib/PencilSimple';
   import SquaresFour from 'phosphor-svelte/lib/SquaresFour';
   import Tray from 'phosphor-svelte/lib/Tray';
+  import { t } from '../lib/i18n.svelte';
   import { invoke } from '../lib/platform';
   import { ui } from '../lib/ui.svelte';
   import TrayView from './TrayView.svelte';
@@ -24,26 +25,26 @@
 <div class="panel">
   <header>
     {#if editing}
-      <span class="title">Edit widgets</span>
-      <button class="done" onclick={() => (editing = false)}>Done</button>
+      <span class="title">{t('island.editWidgets')}</span>
+      <button class="done" onclick={() => (editing = false)}>{t('island.done')}</button>
     {:else}
       <div class="tabs">
         <button class:active={tab === 'widgets'} onclick={() => (tab = 'widgets')}>
-          <SquaresFour size={14} weight="fill" /> Widgets
+          <SquaresFour size={14} weight="fill" /> {t('island.widgets')}
         </button>
         <button class:active={tab === 'tray'} onclick={() => (tab = 'tray')}>
-          <Tray size={14} weight="fill" /> Tray
+          <Tray size={14} weight="fill" /> {t('island.tray')}
         </button>
       </div>
       <div class="tools">
         {#if tab === 'widgets'}
-          <button class="tool" title="Edit widgets" onclick={() => (editing = true)}>
+          <button class="tool" title={t('island.editWidgets')} onclick={() => (editing = true)}>
             <PencilSimple size={16} weight="fill" />
           </button>
         {/if}
         <button
           class="tool"
-          title="Settings"
+          title={t('island.settings')}
           onclick={() => invoke('settings_open').catch((err) => console.warn('settings', err))}
         >
           <GearSix size={17} weight="fill" />

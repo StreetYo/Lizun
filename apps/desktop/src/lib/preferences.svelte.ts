@@ -10,6 +10,8 @@ export interface WidgetSlot {
 }
 
 export interface Preferences {
+  /** Interface language: a code such as `ru`, or `system` to follow Windows (see i18n.svelte.ts). */
+  language: string;
   islandVisibility: IslandVisibility;
   /** How long the mini island stays in "hide after a delay" mode (200–10000 ms). */
   autoHideDelayMs: number;
@@ -26,6 +28,7 @@ export interface Preferences {
 }
 
 const DEFAULTS: Preferences = {
+  language: 'system',
   islandVisibility: 'always',
   autoHideDelayMs: 1000,
   showOnMediaChange: true,
@@ -41,10 +44,16 @@ class PreferencesStore {
   /** False until the saved preferences have been read. */
   loaded = $state(false);
 
-  async start(): Promise<void> {
-    await listen<Preferences>('preferences://changed', (next) => (this.value = next));
-    this.value = { ...DEFAULTS, ...(await invoke<Preferences>('preferences_get')) };
-    this.loaded = true;
+  #started: Promise<void> | null = null;
+
+  /** Reads the saved preferences once; later calls wait for the same read. */
+  start(): Promise<void> {
+    this.#started ??= (async () => {
+      await listen<Preferences>('preferences://changed', (next) => (this.value = next));
+      this.value = { ...DEFAULTS, ...(await invoke<Preferences>('preferences_get')) };
+      this.loaded = true;
+    })();
+    return this.#started;
   }
 
   /** The change shows at once (a dropped widget must not jump back while it is saved) and is

@@ -32,6 +32,8 @@ export interface WidgetContext {
   theme: Theme;
   /** Current values of the settings declared in manifest.json. */
   settings: Settings;
+  /** The language the user picked for Lizun, such as `en` or `ru`; see `language`. */
+  language: string;
 }
 
 export interface NowPlaying {
@@ -224,11 +226,13 @@ export const keyboard = {
 /**
  * Connects to the island and applies its theme as `--lz-*` CSS variables. Call it first.
  * Text fields in the widget get the keyboard while they are in use; pressing Esc in one gives
- * the focus back to the app the user was working in.
+ * the focus back to the app the user was working in. The page's `lang` follows Lizun's language.
  */
 export async function ready(): Promise<WidgetContext> {
   const context = await call<WidgetContext>('lizun.handshake');
   manageKeyboard();
+  document.documentElement.lang = context.language;
+  on<string>('language.changed', (next) => (document.documentElement.lang = next));
   const style = document.documentElement.style;
   const theme = context.theme;
   style.setProperty('--lz-bg', theme.background);
@@ -263,6 +267,15 @@ export const settings = {
   getAll: () => call<Settings>('settings.getAll'),
   /** Called with all values whenever the user changes any of them. */
   subscribe: (listener: (settings: Settings) => void): (() => void) => on('settings.changed', listener),
+};
+
+/**
+ * The language the user picked for Lizun, a code such as `en` or `ru`. `ready()` returns the
+ * current one; texts from manifest.json are translated by the island itself (see `locales`).
+ */
+export const language = {
+  /** Called with the new code when the user switches the language. */
+  subscribe: (listener: (language: string) => void): (() => void) => on('language.changed', listener),
 };
 
 /**

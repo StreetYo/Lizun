@@ -21,6 +21,7 @@ use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::http::StatusCode;
 use tungstenite::{Message, WebSocket};
 
+use crate::i18n::tf;
 use crate::media::{Artwork, MediaCommand, NowPlaying, Player, Source};
 
 pub const EVENT_STATUS: &str = "browser-media://status";
@@ -514,10 +515,10 @@ fn browser_name(user_agent: &str) -> &'static str {
 
 fn describe_bind_error(err: &std::io::Error, port: u16) -> String {
     match err.kind() {
-        ErrorKind::AddrInUse => format!("Port {port} is used by another app."),
+        ErrorKind::AddrInUse => tf("browser.portInUse", &[("port", &port)]),
         // Windows reserves port ranges for Hyper-V and WSL and refuses to bind them.
-        ErrorKind::PermissionDenied => format!("Port {port} is reserved by Windows."),
-        _ => format!("Port {port} is unavailable: {err}"),
+        ErrorKind::PermissionDenied => tf("browser.portReserved", &[("port", &port)]),
+        _ => tf("browser.portUnavailable", &[("port", &port), ("error", err)]),
     }
 }
 

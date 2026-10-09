@@ -50,3 +50,7 @@ pub fn iana_time_zone(_windows_name: &str) -> Option<String> {
 pub fn current_time_zone() -> Option<String> {
     None
 }
+
+pub fn preferred_languages() -> Vec<String> {
+    Vec::new()
+}

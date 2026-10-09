@@ -49,6 +49,8 @@ pub struct WidgetSlot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
+    /// Interface language: a code such as `ru`, or `system` to follow Windows.
+    pub language: String,
     pub island_visibility: IslandVisibility,
     pub auto_hide_delay_ms: u32,
     /// In auto-hide mode, show the mini island when a track starts, pauses or changes.
@@ -69,6 +71,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            language: crate::i18n::SYSTEM.into(),
             island_visibility: IslandVisibility::default(),
             auto_hide_delay_ms: 1000,
             show_on_media_change: true,
@@ -82,6 +85,9 @@ impl Default for Preferences {
 
 impl Preferences {
     fn clamped(mut self) -> Self {
+        if !crate::i18n::is_supported(&self.language) {
+            self.language = crate::i18n::SYSTEM.into();
+        }
         self.auto_hide_delay_ms =
             self.auto_hide_delay_ms.clamp(*AUTO_HIDE_DELAY_MS.start(), *AUTO_HIDE_DELAY_MS.end());
         self.open_delay_ms = self.open_delay_ms.clamp(*OPEN_DELAY_MS.start(), *OPEN_DELAY_MS.end());
@@ -139,6 +145,7 @@ pub fn preferences_set(
     fs::write(&path, json).map_err(|e| e.to_string())?;
     *store.0.lock().unwrap() = preferences.clone();
     crate::browser::configure(&app, preferences.browser_media, preferences.browser_media_port);
+    crate::i18n::apply(&app, &preferences.language);
     if let Err(err) = app.emit(EVENT_CHANGED, &preferences) {
         log::warn!("failed to announce the new preferences: {err}");
     }
@@ -156,6 +163,7 @@ mod tests {
         assert_eq!(empty.auto_hide_delay_ms, 1000);
         assert_eq!(empty.open_delay_ms, 100);
         assert!(empty.show_on_media_change);
+        assert_eq!(empty.language, "system");
 
         let future: Preferences =
             serde_json::from_str(r#"{"islandVisibility":"autoHide","somethingNew":true}"#).unwrap();
@@ -164,6 +172,7 @@ mod tests {
         assert_eq!(future.browser_media_port, 6869);
 
         let hidden = Preferences {
+            language: "ru".into(),
             island_visibility: IslandVisibility::Hidden,
             auto_hide_delay_ms: 1500,
             show_on_media_change: false,
@@ -174,7 +183,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}]}"#
+            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}]}"#
         );
     }
 
@@ -185,6 +194,14 @@ mod tests {
             Preferences { auto_hide_delay_ms: 600_000, open_delay_ms: 600_000, ..Preferences::default() }.clamped();
         assert_eq!((too_short.auto_hide_delay_ms, too_short.open_delay_ms), (200, 0));
         assert_eq!((too_long.auto_hide_delay_ms, too_long.open_delay_ms), (10_000, 2_000));
+    }
+
+    #[test]
+    fn forgets_languages_it_has_no_translation_for() {
+        let gone = Preferences { language: "xx".into(), ..Preferences::default() };
+        assert_eq!(gone.clamped().language, "system");
+        let russian = Preferences { language: "ru".into(), ..Preferences::default() };
+        assert_eq!(russian.clamped().language, "ru");
     }
 
     #[test]

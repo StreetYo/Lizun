@@ -35,6 +35,7 @@ my-widget/
 | `permissions` | `media:read`, `media:control`, `storage`, `activity`. Anything else is rejected. |
 | `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed). Empty means no network. |
 | `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
+| `locales` | Translations of `name`, `description` and the settings, see [Languages](#languages). |
 
 ## The SDK
 
@@ -143,6 +144,64 @@ so the widget does not need to check them.
 The example widget in `widgets/hello` declares one setting of each type.
 
 Lizun builds that predate settings reject a manifest with a `settings` field.
+
+## Languages
+
+Lizun's interface comes in several languages (Settings > General > Language). A widget follows
+it in two ways.
+
+**Texts in the manifest** are translated by Lizun. Add `locales` with the texts for each
+language code; anything left out stays as written in the manifest:
+
+```json
+{
+  "name": "Weather",
+  "description": "Current weather",
+  "settings": [
+    {
+      "key": "units", "type": "select", "label": "Units", "default": "metric",
+      "options": [{ "value": "metric", "label": "Celsius" }, { "value": "imperial", "label": "Fahrenheit" }]
+    },
+    { "key": "refresh", "type": "number", "label": "Refresh every", "unit": "min", "default": 15, "min": 5, "max": 120 }
+  ],
+  "locales": {
+    "ru": {
+      "name": "Погода",
+      "description": "Погода сейчас",
+      "settings": {
+        "units": { "label": "Единицы", "options": { "metric": "Цельсий", "imperial": "Фаренгейт" } },
+        "refresh": { "label": "Обновлять каждые", "unit": "мин" }
+      }
+    }
+  }
+}
+```
+
+A setting's translation can have `label`, `description`, `placeholder` (text settings), `unit`
+(number settings) and `options` (select settings, labels by option value), with the same
+length limits as in `settings`. Keys of settings or options that do not exist are rejected.
+Codes are language tags such as `ru` or `pt-BR`; `pt-BR` is also used when Lizun is in `pt`.
+
+**Texts in the widget's page** are the widget's own. `ready()` returns the language code, sets
+it as the page's `lang`, and `language.subscribe()` reports a switch:
+
+```js
+import { language, ready } from '/__sdk/index.js';
+
+const TEXTS = {
+  en: { empty: 'Nothing to do' },
+  ru: { empty: 'Дел нет' },
+};
+
+const context = await ready();
+let text = TEXTS[context.language] ?? TEXTS.en;
+language.subscribe((next) => {
+  text = TEXTS[next] ?? TEXTS.en;
+  render();
+});
+```
+
+The bundled To-do widget (`apps/desktop/bundled-widgets/todo`) does both.
 
 ## Live activity
 

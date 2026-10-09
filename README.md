@@ -26,11 +26,13 @@ list, and widgets anyone can write and install.
   archive or a folder: Lizun checks the widget and shows its permissions before installing it.
 - Widgets can be dragged into another order and hidden, right in the island (pencil button) or
   in Settings > Widgets.
-- Settings window (gear in the island or the tray menu): launch at login, how the closed
+- Settings window (gear in the island or the tray menu): language, launch at login, how the closed
   island shows (always, hide after a delay, hidden) and whether music changes bring it out,
   how long to hover before it opens, installed widgets with their permissions and settings,
   the widgets folder, quit.
 - Tray icon to open settings, hide the island or quit.
+- English and Russian, following the Windows display language or picked in Settings > General.
+  Widgets get the language too and can translate their name and settings.
 
 ## Development
 
@@ -47,11 +49,28 @@ pnpm dev
 `pnpm dev` starts Vite and the Tauri app with hot reload. The island UI can also be opened in a
 plain browser at the Vite URL, where the backend is mocked (useful for design work).
 
+## Translating
+
+Every text lives in `apps/desktop/src/locales/<code>.json`, one file per language, shared by
+the UI and the Rust core. To add a language:
+
+1. Copy `en.json` to `<code>.json` (a language tag such as `de` or `pt-BR`) and translate the
+   values; keep the keys and the `{placeholders}`. Set `languageName` to the language's name in
+   itself. Plural texts have one key per form (`_one`, `_few`, `_many`, `_other`, as
+   [CLDR](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)
+   lists them for the language).
+2. Add the file to `SOURCES` in `apps/desktop/src-tauri/src/i18n.rs`.
+3. Run `cargo test` in `apps/desktop/src-tauri`: it fails on missing texts and wrong
+   placeholders.
+
+Texts left out of a translation are shown in English. How it works: [ADR 0007](docs/adr/0007-languages.md).
+
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `apps/desktop/src` | Island UI (Svelte 5 + TypeScript) |
+| `apps/desktop/src/locales` | Interface texts, one file per language |
 | `apps/desktop/src-tauri` | Rust core: window, hit region, media, widget protocol |
 | `apps/desktop/src-tauri/src/platform` | OS-specific code (`win/` today; macOS goes next to it) |
 | `packages/widget-sdk` | SDK that widgets import |

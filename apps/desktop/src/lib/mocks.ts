@@ -19,6 +19,7 @@ function sampleArtwork(): string {
 
 const startedAt = Date.now();
 let mockPreferences: unknown = {
+  language: 'system',
   islandVisibility: 'always',
   autoHideDelayMs: 1000,
   showOnMediaChange: true,
@@ -74,6 +75,8 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     case 'preferences_set':
       mockPreferences = args?.preferences;
       return mockPreferences as T;
+    case 'i18n_system_language':
+      return navigator.language.split('-')[0] as T;
     case 'media_snapshot':
       return {
         sourceApp: 'Spotify.exe',

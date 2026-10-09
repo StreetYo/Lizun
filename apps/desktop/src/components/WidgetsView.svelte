@@ -2,6 +2,7 @@
   import Minus from 'phosphor-svelte/lib/Minus';
   import Plus from 'phosphor-svelte/lib/Plus';
   import SquaresFour from 'phosphor-svelte/lib/SquaresFour';
+  import { t } from '../lib/i18n.svelte';
   import { preferences } from '../lib/preferences.svelte';
   import { Reorder } from '../lib/reorder.svelte';
   import { moveWidget, setWidgetEnabled, widgetLayout, type LayoutEntry } from '../lib/widgets/layout.svelte';
@@ -68,14 +69,14 @@
           class="grab"
           role="button"
           tabindex="-1"
-          aria-label="Move {entry.name}"
-          title="Drag to move"
+          aria-label={t('island.moveWidget', { name: entry.name })}
+          title={t('island.dragToMove')}
           onpointerdown={(event) => reorder.start(event, index, shown.map((item) => slots[item.id]))}
           onpointermove={(event) => reorder.move(event)}
           onpointerup={(event) => reorder.end(event)}
           onpointercancel={(event) => reorder.end(event)}
         ></div>
-        <button class="remove" title="Hide {entry.name}" onclick={() => setShown(entry, false)}>
+        <button class="remove" title={t('island.hideWidget', { name: entry.name })} onclick={() => setShown(entry, false)}>
           <Minus size={11} weight="bold" />
         </button>
       {/if}
@@ -83,7 +84,7 @@
   {:else}
     <div class="empty">
       <SquaresFour size={22} weight="fill" />
-      <span>{editing ? 'All widgets are hidden. Add them back below.' : 'All widgets are hidden'}</span>
+      <span>{editing ? t('island.allHiddenEditing') : t('island.allHidden')}</span>
     </div>
   {/each}
 </div>
@@ -95,7 +96,7 @@
         <Plus size={11} weight="bold" />{entry.name}
       </button>
     {:else}
-      <span class="note">Drag a widget to move it. Hidden widgets appear here.</span>
+      <span class="note">{t('island.editNote')}</span>
     {/each}
   </div>
 {/if}

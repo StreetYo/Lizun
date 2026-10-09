@@ -3,6 +3,7 @@
   import CircleNotch from 'phosphor-svelte/lib/CircleNotch';
   import Warning from 'phosphor-svelte/lib/Warning';
   import { calendar, type CalendarEvent } from '../../lib/calendar.svelte';
+  import { i18n, t, type MessageKey } from '../../lib/i18n.svelte';
   import { invoke } from '../../lib/platform';
   import { ui } from '../../lib/ui.svelte';
   import { widgetSettings } from '../../lib/widgets/settings.svelte';
@@ -58,13 +59,13 @@
         end,
         offset: i - 2,
         day: String(zone.fields(start).day).padStart(2, '0'),
-        weekday: zone.format(start, { weekday: 'short' }, 'en'),
+        weekday: zone.format(start, { weekday: 'short' }, i18n.language),
         hasEvents: events.some((event) => overlaps(event, start, end)),
       };
     }),
   );
   const selected = $derived(days[offset + 2]);
-  const month = $derived(zone.format(selected.start, { month: 'short' }, 'en'));
+  const month = $derived(zone.format(selected.start, { month: 'short' }, i18n.language));
   const onDay = $derived(events.filter((event) => overlaps(event, selected.start, selected.end)));
   /** The "Events that ended today" setting: `dim` or `hide`. */
   const hideEnded = $derived(widgetSettings.values['builtin:calendar']?.endedToday === 'hide');
@@ -84,8 +85,8 @@
   const firstLoad = $derived(calendar.snapshot.updatedAt === null);
 
   function timeLabel(event: CalendarEvent): string {
-    if (event.allDay || (event.start <= selected.start && event.end >= selected.end)) return 'All day';
-    const time = (at: number) => zone.format(at, { hour: 'numeric', minute: '2-digit' });
+    if (event.allDay || (event.start <= selected.start && event.end >= selected.end)) return t('calendar.allDay');
+    const time = (at: number) => zone.format(at, { hour: 'numeric', minute: '2-digit' }, i18n.language);
     if (event.start < selected.start) return `–${time(event.end)}`;
     return time(event.start);
   }
@@ -94,14 +95,20 @@
     return `${event.start}-${event.title}`;
   }
 
-  /** `2 d 3 h`, `1 h 5 min`, `12 min`; rounded up for what is ahead, so it never says 0. */
-  function span(ms: number, ahead: boolean): string {
-    if (ms < MINUTE) return ahead ? 'less than a minute' : 'a moment';
+  /** `2 d 3 h`, `1 h 5 min`, `12 min`; rounded up for what is ahead, so it never says 0. Null
+   * under a minute, which each phrase words on its own. */
+  function span(ms: number, ahead: boolean): string | null {
+    if (ms < MINUTE) return null;
     const minutes = ahead ? Math.ceil(ms / MINUTE) : Math.floor(ms / MINUTE);
     const days = Math.floor(minutes / 1440);
     const hours = Math.floor((minutes % 1440) / 60);
     const rest = minutes % 60;
-    const parts = days ? [`${days} d`, hours && `${hours} h`] : hours ? [`${hours} h`, rest && `${rest} min`] : [`${rest} min`];
+    const unit = (key: 'days' | 'hours' | 'minutes', count: number) => count && t(`calendar.${key}`, { count });
+    const parts = days
+      ? [unit('days', days), unit('hours', hours)]
+      : hours
+        ? [unit('hours', hours), unit('minutes', rest)]
+        : [t('calendar.minutes', { count: rest })];
     return parts.filter(Boolean).join(' ');
   }
 
@@ -110,17 +117,28 @@
     if (event.allDay) {
       // Whole days, counted between midnights.
       const days = (at: number) => Math.round((zone.midnight(at) - zone.midnight(now)) / DAY);
-      if (event.start > now) return days(event.start) === 1 ? 'Tomorrow' : `In ${days(event.start)} days`;
-      if (event.end > now) return 'Today';
+      if (event.start > now) {
+        const ahead = days(event.start);
+        return ahead === 1 ? t('calendar.tomorrow') : t('calendar.inDays', { count: ahead });
+      }
+      if (event.end > now) return t('calendar.today');
       const ago = -days(event.end - 1);
-      return ago <= 1 ? 'Yesterday' : `${ago} days ago`;
+      return ago <= 1 ? t('calendar.yesterday') : t('calendar.daysAgo', { count: ago });
     }
-    if (event.start > now) return `Starts in ${span(event.start - now, true)}`;
-    if (event.end > now) return `Started ${span(now - event.start, false)} ago, ends in ${span(event.end - now, true)}`;
-    return `Ended ${span(now - event.end, false)} ago`;
+    const phrase = (time: string | null, some: MessageKey, none: MessageKey) => (time ? t(some, { time }) : t(none));
+    if (event.start > now) return phrase(span(event.start - now, true), 'calendar.startsIn', 'calendar.startsSoon');
+    if (event.end > now) {
+      return t('calendar.running', {
+        started: phrase(span(now - event.start, false), 'calendar.startedAgo', 'calendar.justStarted'),
+        ends: phrase(span(event.end - now, true), 'calendar.endsIn', 'calendar.endsSoon'),
+      });
+    }
+    return phrase(span(now - event.end, false), 'calendar.endedAgo', 'calendar.justEnded');
   }
 
-  const emptyText = $derived(selected.offset !== 0 ? 'No events' : onDay.length ? 'Nothing else today' : 'Nothing for today');
+  const emptyText = $derived(
+    t(selected.offset !== 0 ? 'calendar.noEvents' : onDay.length ? 'calendar.nothingElseToday' : 'calendar.nothingToday'),
+  );
 
   function openSettings(): void {
     invoke('settings_open').catch((err) => console.warn('settings', err));
@@ -153,10 +171,10 @@
   </div>
 
   {#if !calendar.snapshot.configured}
-    <button class="empty action" onclick={openSettings} title="Settings › Widgets › Calendar">
+    <button class="empty action" onclick={openSettings} title={t('calendar.settingsPath')}>
       <CalendarBlank size={18} weight="fill" />
-      <span>Add a calendar link or file</span>
-      <span class="hint">in Settings › Widgets</span>
+      <span>{t('calendar.addSource')}</span>
+      <span class="hint">{t('calendar.inSettings')}</span>
     </button>
   {:else if firstLoad && calendar.snapshot.error}
     <div class="empty error">
@@ -166,7 +184,7 @@
   {:else if firstLoad}
     <div class="empty">
       <span class="spin"><CircleNotch size={18} weight="bold" /></span>
-      <span>Loading events…</span>
+      <span>{t('calendar.loading')}</span>
     </div>
   {:else if listed.length}
     <ul class="events">
@@ -185,7 +203,7 @@
             onpointerleave={() => hovered === key && (hovered = null)}
           >{timeLabel(event)}</span>
           <span class="title" title={[event.title, event.location].filter(Boolean).join(' · ')}>
-            {event.title || 'Untitled event'}
+            {event.title || t('calendar.untitled')}
           </span>
           {#if hovered === key}
             <span class="countdown" role="tooltip">{countdown(event)}</span>
@@ -193,7 +211,7 @@
         </li>
       {/each}
       {#if shown.length < listed.length}
-        <li class="more">+{listed.length - shown.length} more</li>
+        <li class="more">{t('calendar.more', { count: listed.length - shown.length })}</li>
       {/if}
     </ul>
   {:else}

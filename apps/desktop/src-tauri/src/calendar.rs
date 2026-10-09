@@ -21,6 +21,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::i18n::{t, tf};
 use crate::ics::{self, Event};
 use crate::widget_settings::{FileChoice, SelectOption, SettingSpec};
 
@@ -40,41 +41,37 @@ const RETRY_AFTER_ERROR: Duration = Duration::from_secs(2 * 60);
 /// How often a calendar file is checked for changes.
 const FILE_POLL: Duration = Duration::from_secs(10);
 
-/// The widget's options, shown under it in Settings > Widgets.
+/// The widget's options, shown under it in Settings > Widgets, in the current language.
 pub fn settings() -> Vec<SettingSpec> {
     vec![
         SettingSpec::Text {
             key: URL_KEY.into(),
-            label: "Calendar link or file".into(),
-            description: "The secret iCal address of a Google, Outlook or iCloud calendar, or the path to an .ics \
-                          file. It stays on this computer."
-                .into(),
+            label: t("calendar.settings.source"),
+            description: t("calendar.settings.sourceDescription"),
             default: String::new(),
             max_length: 500,
-            placeholder: r"https://…/basic.ics or C:\…\calendar.ics".into(),
-            file: Some(FileChoice { name: "Calendar".into(), extensions: vec!["ics".into()] }),
+            placeholder: t("calendar.settings.sourcePlaceholder"),
+            file: Some(FileChoice { name: t("calendar.settings.fileType"), extensions: vec!["ics".into()] }),
         },
         SettingSpec::Number {
             key: REFRESH_KEY.into(),
-            label: "Refresh every".into(),
-            description: "Google updates the feed itself only every few hours. Files are read again as soon as \
-                          they change."
-                .into(),
+            label: t("calendar.settings.refresh"),
+            description: t("calendar.settings.refreshDescription"),
             default: 15.0,
             min: 5.0,
             max: 240.0,
             step: 5.0,
-            unit: "min".into(),
+            unit: t("calendar.settings.refreshUnit"),
         },
         // Read by the island; the core does not need it.
         SettingSpec::Select {
             key: "endedToday".into(),
-            label: "Events that ended today".into(),
-            description: "Earlier days always show their events, dimmed.".into(),
+            label: t("calendar.settings.endedToday"),
+            description: t("calendar.settings.endedTodayDescription"),
             default: "dim".into(),
             options: vec![
-                SelectOption { value: "dim".into(), label: "Show dimmed".into() },
-                SelectOption { value: "hide".into(), label: "Hide".into() },
+                SelectOption { value: "dim".into(), label: t("calendar.settings.showDimmed") },
+                SelectOption { value: "hide".into(), label: t("calendar.settings.hide") },
             ],
         },
     ]
@@ -268,7 +265,7 @@ impl Source {
                 // Calendar apps hand out webcal:// links for subscribing; they are served over HTTPS.
                 "webcal" | "webcals" => Ok(Self::Web(format!("https://{rest}"))),
                 "file" => file_url_path(rest).map(Self::File),
-                _ => Err("Use an https:// or webcal:// link, or the path to an .ics file.".into()),
+                _ => Err(t("calendar.errors.scheme")),
             };
         }
         let path = Path::new(input);
@@ -279,11 +276,11 @@ impl Source {
         let host_ok = (host.contains('.') || host.starts_with("localhost"))
             && host.chars().all(|c| c.is_ascii_alphanumeric() || ".-:".contains(c));
         if !input.contains('/') && input.to_ascii_lowercase().ends_with(".ics") {
-            Err(r"Use the full path to the file, such as C:\Users\you\calendar.ics.".into())
+            Err(t("calendar.errors.fullPath"))
         } else if host_ok {
             Ok(Self::Host(input.to_string()))
         } else {
-            Err("Paste the iCal link of the calendar or the full path to an .ics file.".into())
+            Err(t("calendar.errors.notALink"))
         }
     }
 
@@ -307,17 +304,16 @@ impl Source {
         if start.get(..15).is_some_and(|head| head.eq_ignore_ascii_case("BEGIN:VCALENDAR")) {
             Ok(text)
         } else if matches!(self, Self::File(_)) {
-            Err("This file is not a calendar. Use an .ics file.".into())
+            Err(t("calendar.errors.notACalendarFile"))
         } else {
-            Err("This link opens a web page, not a calendar. Copy the iCal (.ics) address from the calendar's settings."
-                .into())
+            Err(t("calendar.errors.webPage"))
         }
     }
 }
 
 /// The path in `file:///C:/Users/you/calendar.ics` or `file://server/share/calendar.ics`.
 fn file_url_path(rest: &str) -> Result<PathBuf, String> {
-    let invalid = || "The file link is not valid.".to_string();
+    let invalid = || t("calendar.errors.invalidFileLink");
     let decoded = percent_decode_str(rest).decode_utf8().map_err(|_| invalid())?;
     let rest = decoded.strip_prefix("localhost/").map(|rest| format!("/{rest}")).unwrap_or_else(|| decoded.to_string());
     let path = match rest.strip_prefix('/') {
@@ -341,17 +337,17 @@ fn file_stamp(path: &Path) -> Option<FileStamp> {
 
 fn read_file(path: &Path) -> Result<Vec<u8>, String> {
     let metadata = fs::metadata(path).map_err(|err| match err.kind() {
-        ErrorKind::NotFound => "Lizun cannot find this file. Check the path.".to_string(),
-        ErrorKind::PermissionDenied => "Lizun is not allowed to read this file.".into(),
-        _ => format!("Could not read the file: {err}"),
+        ErrorKind::NotFound => t("calendar.errors.fileNotFound"),
+        ErrorKind::PermissionDenied => t("calendar.errors.fileNotAllowed"),
+        _ => tf("calendar.errors.fileUnreadable", &[("error", &err)]),
     })?;
     if metadata.is_dir() {
-        return Err("This is a folder. Use the path to the .ics file itself.".into());
+        return Err(t("calendar.errors.folder"));
     }
     if metadata.len() > MAX_FEED_BYTES {
-        return Err(format!("The calendar is larger than {} MB.", MAX_FEED_BYTES / 1024 / 1024));
+        return Err(too_large());
     }
-    fs::read(path).map_err(|err| format!("Could not read the file: {err}"))
+    fs::read(path).map_err(|err| tf("calendar.errors.fileUnreadable", &[("error", &err)]))
 }
 
 fn fetch(url: &str) -> Result<Vec<u8>, ureq::Error> {
@@ -366,17 +362,19 @@ fn is_connection_error(err: &ureq::Error) -> bool {
 
 fn describe(err: ureq::Error) -> String {
     match err {
-        ureq::Error::StatusCode(401 | 403) => {
-            "The calendar service refused the link. Use the secret address in iCal format.".into()
-        }
-        ureq::Error::StatusCode(404) => "Nothing found at this link. Check that it is the calendar's iCal address.".into(),
-        ureq::Error::StatusCode(code) => format!("The calendar service answered with HTTP error {code}."),
-        ureq::Error::BodyExceedsLimit(_) => format!("The calendar is larger than {} MB.", MAX_FEED_BYTES / 1024 / 1024),
+        ureq::Error::StatusCode(401 | 403) => t("calendar.errors.refused"),
+        ureq::Error::StatusCode(404) => t("calendar.errors.notFound"),
+        ureq::Error::StatusCode(code) => tf("calendar.errors.httpError", &[("code", &code)]),
+        ureq::Error::BodyExceedsLimit(_) => too_large(),
         err => {
             log::warn!("could not download the calendar feed: {err}");
-            "Could not reach the calendar. Lizun will try again in a few minutes.".into()
+            t("calendar.errors.unreachable")
         }
     }
+}
+
+fn too_large() -> String {
+    tf("calendar.errors.tooLarge", &[("size", &(MAX_FEED_BYTES / 1024 / 1024))])
 }
 
 #[cfg(test)]

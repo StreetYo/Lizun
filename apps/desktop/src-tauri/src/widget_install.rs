@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 use zip::ZipArchive;
 
+use crate::i18n::{t, tf};
 use crate::widgets::{self, InstalledWidget, MANIFEST_FILE, WidgetManifest};
 
 /// Largest archive Lizun downloads or opens.
@@ -94,11 +95,8 @@ pub async fn widgets_install_prepare(app: AppHandle, source: InstallSource) -> R
         Some(installed) if installed.source == "user" => Some(installed.manifest.version),
         Some(installed) => {
             remove_quietly(&dir);
-            let owner = if installed.source == "bundled" { "comes with Lizun" } else { "is in the repository's widgets folder" };
-            return Err(format!(
-                "The widget uses the id {}, which is taken by {}: that widget {owner}.",
-                manifest.id, installed.manifest.name
-            ));
+            let key = if installed.source == "bundled" { "install.idTakenBundled" } else { "install.idTakenDev" };
+            return Err(tf(key, &[("id", &manifest.id), ("name", &installed.manifest.name)]));
         }
     };
 
@@ -111,7 +109,7 @@ pub async fn widgets_install_prepare(app: AppHandle, source: InstallSource) -> R
 
 #[tauri::command]
 pub async fn widgets_install_confirm(app: AppHandle, token: u64) -> Result<Vec<InstalledWidget>, String> {
-    let staged = take_pending(&app, token).ok_or("This install is no longer waiting. Start it again.")?;
+    let staged = take_pending(&app, token).ok_or_else(|| t("install.notWaiting"))?;
     let target_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || install(&target_app, staged))
         .await
@@ -130,9 +128,9 @@ pub fn widgets_install_cancel(app: AppHandle, token: u64) {
 /// it again brings them back.
 #[tauri::command]
 pub async fn widgets_uninstall(app: AppHandle, id: String) -> Result<Vec<InstalledWidget>, String> {
-    let widget = widgets::lookup(&app, &id).ok_or("This widget is not installed.")?;
+    let widget = widgets::lookup(&app, &id).ok_or_else(|| t("install.notInstalled"))?;
     if widget.source != "user" {
-        return Err("Only widgets you installed can be removed.".into());
+        return Err(t("install.onlyUser"));
     }
     let token = app.state::<Installer>().next_token.fetch_add(1, Ordering::Relaxed) + 1;
     let trash = staging_root(&app).ok_or("no app data folder")?.join(format!("removed-{token}"));
@@ -171,7 +169,7 @@ fn stage(source: &InstallSource, dir: &Path) -> Result<(WidgetManifest, String),
         }
         InstallSource::Path { path } if path.is_dir() => {
             if !path.join(MANIFEST_FILE).is_file() {
-                return Err("This folder has no manifest.json. Choose the widget's own folder.".into());
+                return Err(t("install.folderWithoutManifest"));
             }
             copy_folder(path, &widget_dir, &mut Budget::default())?;
             path.display().to_string()
@@ -180,11 +178,11 @@ fn stage(source: &InstallSource, dir: &Path) -> Result<(WidgetManifest, String),
             unpack(&read_archive(path)?, None, &widget_dir)?;
             path.display().to_string()
         }
-        InstallSource::Path { .. } => return Err("Choose a .zip archive or a widget folder.".into()),
+        InstallSource::Path { .. } => return Err(t("install.zipOrFolder")),
     };
-    let manifest = widgets::load_manifest(&widget_dir).map_err(|err| format!("The manifest is invalid: {err}"))?;
+    let manifest = widgets::load_manifest(&widget_dir).map_err(|err| tf("install.invalidManifest", &[("error", &err)]))?;
     if !widget_dir.join(&manifest.entry).is_file() {
-        return Err(format!("The widget has no {}, the page its manifest names as the entry.", manifest.entry));
+        return Err(tf("install.noEntry", &[("entry", &manifest.entry)]));
     }
     Ok((manifest, origin))
 }
@@ -230,7 +228,7 @@ fn move_into_place(staging: &Path, target: &Path, in_the_way: &[PathBuf]) -> Res
 }
 
 fn folder_in_use(err: &io::Error) -> String {
-    format!("Could not move the installed widget's folder ({err}). Close any program that has it open and try again.")
+    tf("install.folderInUse", &[("error", err)])
 }
 
 fn remove_quietly(dir: &Path) {
@@ -274,22 +272,22 @@ impl GitHubLink {
     /// - `.../releases/download/<tag>/<file>.zip`, `.../releases/latest/download/<file>.zip`
     ///   and `.../archive/<...>.zip`: a zip file.
     fn parse(input: &str) -> Result<Self, String> {
-        const USAGE: &str = "Paste a link to a widget on GitHub, such as https://github.com/owner/repo.";
+        let usage = || t("install.usage");
         let link = input.trim();
         let link = link.split(['?', '#']).next().unwrap_or_default();
         let link = link.strip_prefix("https://").or_else(|| link.strip_prefix("http://")).unwrap_or(link);
         let link = link.strip_prefix("www.").unwrap_or(link);
-        let path = link.strip_prefix("github.com/").ok_or(USAGE)?;
+        let path = link.strip_prefix("github.com/").ok_or_else(usage)?;
         let segments: Vec<String> = path
             .split('/')
             .filter(|segment| !segment.is_empty())
             .map(|segment| percent_decode_str(segment).decode_utf8_lossy().into_owned())
             .collect();
-        let [owner, repo, rest @ ..] = segments.as_slice() else { return Err(USAGE.into()) };
+        let [owner, repo, rest @ ..] = segments.as_slice() else { return Err(usage()) };
         let repo = repo.strip_suffix(".git").unwrap_or(repo);
         let name_ok = |name: &str| !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
         if !name_ok(owner) || !name_ok(repo) {
-            return Err(USAGE.into());
+            return Err(usage());
         }
         let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
         let is_zip = rest.last().is_some_and(|file| file.to_ascii_lowercase().ends_with(".zip"));
@@ -302,7 +300,7 @@ impl GitHubLink {
                 (LinkTarget::File(rest.join("/")), None)
             }
             _ => {
-                return Err("This GitHub link does not lead to a repository, a folder in one, a release or a zip file.".into());
+                return Err(t("install.unsupportedLink"));
             }
         };
         let origin = format!("github.com/{owner}/{repo}{}", rest.iter().map(|s| format!("/{s}")).collect::<String>());
@@ -329,15 +327,13 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     let agent = crate::http::agent(Duration::from_secs(180));
     log::info!("downloading a widget from {url}");
     let mut response = agent.get(url).call().map_err(|err| match err {
-        ureq::Error::StatusCode(404) => {
-            "Nothing found at this link. Check it; widgets from private repositories cannot be installed.".to_string()
-        }
-        ureq::Error::StatusCode(code) => format!("GitHub answered with HTTP error {code}. Try again later."),
-        err => format!("Could not download the widget: {err}"),
+        ureq::Error::StatusCode(404) => t("install.notFound"),
+        ureq::Error::StatusCode(code) => tf("install.httpError", &[("code", &code)]),
+        err => tf("install.downloadFailed", &[("error", &err)]),
     })?;
     response.body_mut().with_config().limit(MAX_ARCHIVE_BYTES).read_to_vec().map_err(|err| match err {
-        ureq::Error::BodyExceedsLimit(_) => too_large("The archive"),
-        err => format!("Could not download the widget: {err}"),
+        ureq::Error::BodyExceedsLimit(_) => archive_too_large(),
+        err => tf("install.downloadFailed", &[("error", &err)]),
     })
 }
 
@@ -348,13 +344,13 @@ fn is_zip(path: &Path) -> bool {
 fn read_archive(path: &Path) -> Result<Vec<u8>, String> {
     let size = fs::metadata(path).map_err(|e| e.to_string())?.len();
     if size > MAX_ARCHIVE_BYTES {
-        return Err(too_large("The archive"));
+        return Err(archive_too_large());
     }
     fs::read(path).map_err(|e| e.to_string())
 }
 
-fn too_large(what: &str) -> String {
-    format!("{what} is larger than {} MB.", MAX_ARCHIVE_BYTES / 1024 / 1024)
+fn archive_too_large() -> String {
+    tf("install.archiveTooLarge", &[("size", &(MAX_ARCHIVE_BYTES / 1024 / 1024))])
 }
 
 /// Counts what is written for one widget and stops at the limits.
@@ -368,7 +364,7 @@ impl Budget {
     fn add_file(&mut self) -> Result<(), String> {
         self.files += 1;
         if self.files > MAX_WIDGET_FILES {
-            return Err(format!("The widget has more than {MAX_WIDGET_FILES} files."));
+            return Err(tf("install.tooManyFiles", &[("count", &MAX_WIDGET_FILES)]));
         }
         Ok(())
     }
@@ -379,7 +375,7 @@ impl Budget {
         let left = MAX_WIDGET_BYTES - self.bytes;
         self.bytes += io::copy(&mut from.take(left + 1), &mut file).map_err(|e| e.to_string())?;
         if self.bytes > MAX_WIDGET_BYTES {
-            return Err(format!("The widget is larger than {} MB.", MAX_WIDGET_BYTES / 1024 / 1024));
+            return Err(tf("install.widgetTooLarge", &[("size", &(MAX_WIDGET_BYTES / 1024 / 1024))]));
         }
         Ok(())
     }
@@ -389,7 +385,7 @@ impl Budget {
 /// `manifest.json`, or `folder` for a GitHub folder link. Entries whose names would land outside
 /// `dest`, and symbolic links, are skipped.
 fn unpack(archive: &[u8], folder: Option<&str>, dest: &Path) -> Result<(), String> {
-    let mut archive = ZipArchive::new(Cursor::new(archive)).map_err(|err| format!("This is not a zip archive Lizun can read: {err}"))?;
+    let mut archive = ZipArchive::new(Cursor::new(archive)).map_err(|err| tf("install.notAZip", &[("error", &err)]))?;
     let names: Vec<Option<PathBuf>> = (0..archive.len())
         .map(|index| archive.by_index_raw(index).map(|entry| entry.enclosed_name()))
         .collect::<Result<_, _>>()
@@ -430,23 +426,20 @@ fn widget_root(names: &[Option<PathBuf>], folder: Option<&str>) -> Result<PathBu
             .into_iter()
             .find(|root| root.components().skip(1).map(|c| c.as_os_str().to_str()).eq(wanted.iter().map(|s| Some(*s))))
             .map(Path::to_path_buf)
-            .ok_or_else(|| format!("There is no manifest.json in the folder {folder}, so it holds no Lizun widget."));
+            .ok_or_else(|| tf("install.noManifestInFolder", &[("folder", &folder)]));
     }
 
     let depth = roots
         .iter()
         .map(|root| root.components().count())
         .min()
-        .ok_or("There is no manifest.json here, so this is not a Lizun widget.")?;
+        .ok_or_else(|| t("install.noManifest"))?;
     let shallowest: Vec<&Path> = roots.into_iter().filter(|root| root.components().count() == depth).collect();
     match shallowest.as_slice() {
         [root] => Ok(root.to_path_buf()),
         several => {
             let list: Vec<String> = several.iter().map(|root| root.display().to_string().replace('\\', "/")).collect();
-            Err(format!(
-                "There are several widgets here ({}). Install one at a time: link to its folder on GitHub or choose that folder.",
-                list.join(", ")
-            ))
+            Err(tf("install.severalWidgets", &[("list", &list.join(", "))]))
         }
     }
 }

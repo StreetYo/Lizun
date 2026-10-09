@@ -5,6 +5,7 @@
  * manifest before anything is done on its behalf.
  */
 import { debug } from '../debug';
+import { i18n } from '../i18n.svelte';
 import { keyboard } from '../keyboard.svelte';
 import { media, type MediaCommand } from '../media.svelte';
 import { activities, parseActivity } from './activities.svelte';
@@ -43,6 +44,7 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
       permissions: widget.permissions,
       theme: THEME,
       settings: widgetSettings.of(widget),
+      language: i18n.language,
     }),
   },
   // A widget's own settings need no permission; only the user can change them.
@@ -161,6 +163,9 @@ export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest):
     // another app; the SDK leaves the field so the next click takes the keyboard again.
     keyboard.onRelease(() => {
       for (const frame of frames.values()) send(frame, { kind: 'event', name: 'keyboard.released', payload: null });
+    });
+    i18n.onChange((language) => {
+      for (const frame of frames.values()) send(frame, { kind: 'event', name: 'language.changed', payload: language });
     });
     widgetSettings.onChange((widgetId) => {
       for (const frame of frames.values()) {

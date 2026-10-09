@@ -3,16 +3,25 @@
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{App, AppHandle, Manager};
+use tauri::{App, AppHandle, Manager, Wry};
 
+use crate::i18n::t;
 use crate::island::ISLAND_LABEL;
 
+/// The menu's items, kept to relabel them when the language changes.
+struct TrayMenu {
+    settings: MenuItem<Wry>,
+    toggle: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
+}
+
 pub fn setup(app: &mut App) -> tauri::Result<()> {
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let toggle = MenuItem::with_id(app, "toggle", "Hide island", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Lizun", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", t("tray.settings"), true, None::<&str>)?;
+    let toggle = MenuItem::with_id(app, "toggle", t("tray.hideIsland"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", t("tray.quit"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&settings, &toggle, &separator, &quit])?;
+    app.manage(TrayMenu { settings, toggle, quit });
 
     let mut tray = TrayIconBuilder::with_id("lizun").tooltip("Lizun").menu(&menu);
     if let Some(icon) = app.default_window_icon() {
@@ -30,7 +39,7 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
             });
         }
         "toggle" => {
-            if let Err(err) = toggle_island(app, &toggle) {
+            if let Err(err) = toggle_island(app) {
                 log::warn!("could not toggle the island: {err}");
             }
         }
@@ -40,16 +49,27 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn toggle_island(app: &AppHandle, item: &MenuItem<tauri::Wry>) -> tauri::Result<()> {
+fn toggle_island(app: &AppHandle) -> tauri::Result<()> {
     let Some(window) = app.get_webview_window(ISLAND_LABEL) else {
         return Ok(());
     };
     if window.is_visible()? {
         window.hide()?;
-        item.set_text("Show island")?;
     } else {
         crate::platform::show_without_activation(&window)?;
-        item.set_text("Hide island")?;
     }
+    relabel(app);
     Ok(())
+}
+
+/// Labels the menu in the current language; the toggle says what it will do to the island.
+pub fn relabel(app: &AppHandle) {
+    let Some(menu) = app.try_state::<TrayMenu>() else { return };
+    let visible = app.get_webview_window(ISLAND_LABEL).is_none_or(|window| window.is_visible().unwrap_or(true));
+    let toggle = if visible { "tray.hideIsland" } else { "tray.showIsland" };
+    for (item, key) in [(&menu.settings, "tray.settings"), (&menu.toggle, toggle), (&menu.quit, "tray.quit")] {
+        if let Err(err) = item.set_text(t(key)) {
+            log::warn!("could not relabel the tray menu: {err}");
+        }
+    }
 }

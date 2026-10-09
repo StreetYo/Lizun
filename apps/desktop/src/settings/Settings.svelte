@@ -15,50 +15,40 @@
   import PuzzlePiece from 'phosphor-svelte/lib/PuzzlePiece';
   import Trash from 'phosphor-svelte/lib/Trash';
   import { browserMedia } from '../lib/browserMedia.svelte';
+  import { i18n, LANGUAGES, t, tSplit, type MessageKey } from '../lib/i18n.svelte';
   import { invoke, isTauri, onFileDrag } from '../lib/platform';
   import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
   import { Reorder } from '../lib/reorder.svelte';
   import { WidgetInstaller } from '../lib/widgets/installer.svelte';
-  import { BUILT_IN_WIDGETS, moveWidget, setWidgetEnabled, widgetLayout } from '../lib/widgets/layout.svelte';
-  import type { SettingSpec, SettingValue, WidgetManifest } from '../lib/widgets/registry.svelte';
+  import { BUILT_IN_WIDGETS, builtInTexts, moveWidget, setWidgetEnabled, widgetLayout } from '../lib/widgets/layout.svelte';
+  import { localized, type SettingSpec, type SettingValue, type WidgetManifest } from '../lib/widgets/registry.svelte';
   import { widgetSettings, type SettingsOwner } from '../lib/widgets/settings.svelte';
 
   type Section = 'general' | 'media' | 'widgets' | 'about';
 
-  const VISIBILITY: { value: IslandVisibility; label: string; hint: string }[] = [
-    {
-      value: 'always',
-      label: 'Always visible',
-      hint: 'The mini island stays at the top of the screen while it has something to show, such as music, files in the tray or a widget activity.',
-    },
-    {
-      value: 'autoHide',
-      label: 'Hide after a delay',
-      hint: 'Shows after the island closes or when something changes, such as a new track, then hides.',
-    },
-    { value: 'hidden', label: 'Hidden', hint: 'Nothing is shown while the island is closed.' },
-  ];
+  const VISIBILITY: IslandVisibility[] = ['always', 'autoHide', 'hidden'];
 
-  const BUILT_IN = [
-    ...BUILT_IN_WIDGETS,
-    { id: 'tray', name: 'Files Tray', description: 'Drop files on the island to keep them at hand' },
-  ];
+  const builtIn = $derived([
+    ...BUILT_IN_WIDGETS.map((widget) => ({ id: widget.id, ...builtInTexts(widget.texts) })),
+    { id: 'tray', ...builtInTexts('tray') },
+  ]);
 
-  const PERMISSIONS: Record<string, string> = {
-    'media:read': 'Reads now playing',
-    'media:control': 'Controls playback',
-    storage: 'Stores data',
-    activity: 'Shows in the closed island',
+  const PERMISSIONS: Record<string, MessageKey> = {
+    'media:read': 'settings.permissions.mediaRead',
+    'media:control': 'settings.permissions.mediaControl',
+    storage: 'settings.permissions.storage',
+    activity: 'settings.permissions.activity',
   };
 
   let section = $state<Section>('general');
   let launchAtLogin = $state(false);
   let widgets = $state<WidgetManifest[]>([]);
-  /** Settings of the built-in widgets, declared in the core. */
+  /** Settings of the built-in widgets, declared in the core in its current language. */
   let builtInSettings = $state<Record<string, SettingSpec[]>>({});
   // Widgets shipped with Lizun are listed with the other built-in ones.
-  const bundledWidgets = $derived(widgets.filter((widget) => widget.source === 'bundled'));
-  const installedWidgets = $derived(widgets.filter((widget) => widget.source !== 'bundled'));
+  const shownWidgets = $derived(widgets.map(localized));
+  const bundledWidgets = $derived(shownWidgets.filter((widget) => widget.source === 'bundled'));
+  const installedWidgets = $derived(shownWidgets.filter((widget) => widget.source !== 'bundled'));
   let info = $state<{ version: string; widgetsDir: string | null }>({ version: '', widgetsDir: null });
   let error = $state<string | null>(null);
 
@@ -69,7 +59,6 @@
     void (async () => {
       info = (await invoke('app_info')) ?? info;
       widgets = (await invoke<WidgetManifest[]>('widgets_list')) ?? [];
-      builtInSettings = (await invoke<Record<string, SettingSpec[]>>('widget_settings_built_in')) ?? {};
       if (isTauri) launchAtLogin = await isEnabled().catch(() => false);
     })();
     // A zip archive or a folder dropped anywhere on the window is installed as a widget.
@@ -81,7 +70,7 @@
         dropping = false;
         section = 'widgets';
         if (paths.length === 1) void installer.prepare({ kind: 'path', path: paths[0] });
-        else installer.error = 'Drop one widget at a time.';
+        else installer.error = t('settings.widgets.dropOne');
       },
     });
     return () => {
@@ -90,6 +79,28 @@
     };
   });
 
+  // The core words the built-in widgets' settings, so they are read again in a new language.
+  $effect(() => {
+    void i18n.language;
+    void invoke<Record<string, SettingSpec[]>>('widget_settings_built_in').then((settings) => (builtInSettings = settings ?? {}));
+  });
+
+  $effect(() => {
+    document.title = t('settings.windowTitle');
+  });
+
+  /** "System (English)": the language the system would pick, in that language. */
+  const systemLanguageName = $derived(LANGUAGES.find((language) => language.code === i18n.system)?.name ?? i18n.system);
+
+  async function setLanguage(language: string): Promise<void> {
+    error = null;
+    try {
+      await preferences.update({ language });
+    } catch (err) {
+      error = t('settings.errors.save', { error: String(err) });
+    }
+  }
+
   async function toggleLaunchAtLogin(): Promise<void> {
     error = null;
     try {
@@ -97,7 +108,7 @@
       else await enable();
       launchAtLogin = await isEnabled();
     } catch (err) {
-      error = `Could not change the login item: ${err}`;
+      error = t('settings.errors.loginItem', { error: String(err) });
     }
   }
 
@@ -106,7 +117,7 @@
     try {
       await preferences.update({ islandVisibility: value });
     } catch (err) {
-      error = `Could not save the setting: ${err}`;
+      error = t('settings.errors.save', { error: String(err) });
     }
   }
 
@@ -132,7 +143,7 @@
     try {
       await preferences.update({ [key]: Math.round(clamped * 1000) });
     } catch (err) {
-      error = `Could not save the setting: ${err}`;
+      error = t('settings.errors.save', { error: String(err) });
     }
   }
 
@@ -144,7 +155,7 @@
     try {
       await preferences.update({ [key]: !preferences.value[key] });
     } catch (err) {
-      error = `Could not save the setting: ${err}`;
+      error = t('settings.errors.save', { error: String(err) });
     }
   }
 
@@ -153,24 +164,26 @@
     const port = Number.parseInt(input.value, 10);
     if (!Number.isInteger(port) || port < PORTS.min || port > PORTS.max) {
       input.value = String(preferences.value.browserMediaPort);
-      error = `The port must be a number from ${PORTS.min} to ${PORTS.max}.`;
+      error = t('settings.errors.port', PORTS);
       return;
     }
     error = null;
     try {
       await preferences.update({ browserMediaPort: port });
     } catch (err) {
-      error = `Could not save the setting: ${err}`;
+      error = t('settings.errors.save', { error: String(err) });
     }
   }
 
   const browserMediaState = $derived.by((): { text: string; tone: 'ok' | 'wait' | 'bad' } => {
     const status = browserMedia.status;
-    if (!status) return { text: 'Starting…', tone: 'wait' };
-    if (status.error) return { text: `${status.error} Lizun keeps retrying; choose another port if it stays busy.`, tone: 'bad' };
-    if (status.browsers.length) return { text: `Connected: ${[...new Set(status.browsers)].join(', ')}`, tone: 'ok' };
-    if (status.listening) return { text: `Waiting for the extension on port ${status.port}.`, tone: 'wait' };
-    return { text: 'Starting…', tone: 'wait' };
+    if (!status) return { text: t('settings.media.starting'), tone: 'wait' };
+    if (status.error) return { text: t('settings.media.retrying', { error: status.error }), tone: 'bad' };
+    if (status.browsers.length) {
+      return { text: t('settings.media.connected', { browsers: [...new Set(status.browsers)].join(', ') }), tone: 'ok' };
+    }
+    if (status.listening) return { text: t('settings.media.waiting', { port: status.port }), tone: 'wait' };
+    return { text: t('settings.media.starting'), tone: 'wait' };
   });
 
   async function reloadWidgets(): Promise<void> {
@@ -183,7 +196,7 @@
     try {
       await widgetSettings.set(widget.id, key, value);
     } catch (err) {
-      error = `Could not save the setting: ${err}`;
+      error = t('settings.errors.save', { error: String(err) });
     }
   }
 
@@ -213,11 +226,14 @@
     error = null;
     try {
       const path = isTauri
-        ? await open({ title: `Choose a file for ${setting.label}`, filters: [{ name: file.name, extensions: file.extensions }] })
+        ? await open({
+            title: t('settings.widgets.chooseFileFor', { label: setting.label }),
+            filters: [{ name: file.name, extensions: file.extensions }],
+          })
         : `C:\\Users\\you\\Downloads\\calendar.${file.extensions[0]}`;
       if (typeof path === 'string') await setWidgetSetting(widget, setting.key, path);
     } catch (err) {
-      error = `Could not open the file dialog: ${err}`;
+      error = t('settings.errors.fileDialog', { error: String(err) });
     }
   }
 
@@ -226,7 +242,7 @@
     try {
       await widgetSettings.reset(widget.id);
     } catch (err) {
-      error = `Could not reset the settings: ${err}`;
+      error = t('settings.errors.reset', { error: String(err) });
     }
   }
 
@@ -243,7 +259,7 @@
     try {
       await moveWidget(layout, from, to);
     } catch (err) {
-      error = `Could not save the order: ${err}`;
+      error = t('settings.errors.saveOrder', { error: String(err) });
     }
     // The row was moved in the page, which takes the focus away from its handle.
     if (refocus) {
@@ -264,7 +280,7 @@
     try {
       await setWidgetEnabled(layout, id, enabled);
     } catch (err) {
-      error = `Could not save the setting: ${err}`;
+      error = t('settings.errors.save', { error: String(err) });
     }
   }
 
@@ -293,13 +309,13 @@
     try {
       widgets = await invoke<WidgetManifest[]>('widgets_uninstall', { id: widget.id });
     } catch (err) {
-      error = `Could not remove ${widget.name}: ${err}`;
+      error = t('settings.errors.remove', { name: widget.name, error: String(err) });
     }
   }
 
   function openWidgetsFolder(): void {
     error = null;
-    invoke('widgets_open_folder').catch((err) => (error = `Could not open the folder: ${err}`));
+    invoke('widgets_open_folder').catch((err) => (error = t('settings.errors.openFolder', { error: String(err) })));
   }
 </script>
 
@@ -310,7 +326,7 @@
       {@render settingRow(widget, setting, values[setting.key])}
     {/each}
     <div class="row setting reset">
-      <button class="link" onclick={() => resetWidgetSettings(widget)}>Reset to defaults</button>
+      <button class="link" onclick={() => resetWidgetSettings(widget)}>{t('settings.widgets.resetDefaults')}</button>
     </div>
   {/if}
 {/snippet}
@@ -318,13 +334,13 @@
 {#snippet permissionChips(widget: WidgetManifest)}
   <div class="chips">
     {#each widget.permissions as permission (permission)}
-      <span class="chip">{PERMISSIONS[permission] ?? permission}</span>
+      <span class="chip">{permission in PERMISSIONS ? t(PERMISSIONS[permission]) : permission}</span>
     {/each}
     {#each widget.network as origin (origin)}
-      <span class="chip">Network: {origin}</span>
+      <span class="chip">{t('settings.permissions.network', { origin })}</span>
     {/each}
     {#if !widget.permissions.length && !widget.network.length}
-      <span class="chip">No permissions</span>
+      <span class="chip">{t('settings.permissions.none')}</span>
     {/if}
   </div>
 {/snippet}
@@ -379,8 +395,8 @@
         />
         {#if setting.file}
           {@const file = setting.file}
-          <button class="secondary compact" title="Choose a file" onclick={() => chooseFile(widget, setting, file)}>
-            <FolderOpen size={14} weight="fill" /> Choose…
+          <button class="secondary compact" title={t('settings.widgets.chooseFile')} onclick={() => chooseFile(widget, setting, file)}>
+            <FolderOpen size={14} weight="fill" /> {t('settings.widgets.choose')}
           </button>
         {/if}
       </span>
@@ -392,57 +408,72 @@
   <nav>
     <div class="brand"><span class="logo"></span>Lizun</div>
     <button class:active={section === 'general'} onclick={() => (section = 'general')}>
-      <GearSix size={16} weight="fill" /> General
+      <GearSix size={16} weight="fill" /> {t('settings.nav.general')}
     </button>
     <button class:active={section === 'media'} onclick={() => (section = 'media')}>
-      <MusicNotes size={16} weight="fill" /> Media
+      <MusicNotes size={16} weight="fill" /> {t('settings.nav.media')}
     </button>
     <button class:active={section === 'widgets'} onclick={() => (section = 'widgets')}>
-      <PuzzlePiece size={16} weight="fill" /> Widgets
+      <PuzzlePiece size={16} weight="fill" /> {t('settings.nav.widgets')}
     </button>
     <button class:active={section === 'about'} onclick={() => (section = 'about')}>
-      <Info size={16} weight="fill" /> About
+      <Info size={16} weight="fill" /> {t('settings.nav.about')}
     </button>
   </nav>
 
   <main>
     {#if section === 'general'}
-      <h1>General</h1>
+      <h1>{t('settings.general.title')}</h1>
       <div class="card">
         <div class="row">
+          <label class="text" for="language">
+            <span class="label">{t('settings.general.language')}</span>
+            <span class="hint">{t('settings.general.languageHint')}</span>
+          </label>
+          <select
+            id="language"
+            class="select"
+            value={preferences.value.language}
+            onchange={(event) => setLanguage(event.currentTarget.value)}
+          >
+            <option value="system">{t('settings.general.systemLanguage', { name: systemLanguageName })}</option>
+            {#each LANGUAGES as language (language.code)}
+              <option value={language.code} lang={language.code}>{language.name}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="row">
           <div class="text">
-            <div class="label">Launch at login</div>
-            <div class="hint">Start Lizun when you sign in to Windows.</div>
+            <div class="label">{t('settings.general.launchAtLogin')}</div>
+            <div class="hint">{t('settings.general.launchAtLoginHint')}</div>
           </div>
           <button
             class="switch"
             class:on={launchAtLogin}
             role="switch"
             aria-checked={launchAtLogin}
-            aria-label="Launch at login"
+            aria-label={t('settings.general.launchAtLogin')}
             onclick={toggleLaunchAtLogin}
           ><span></span></button>
         </div>
       </div>
 
-      <h2>Mini island</h2>
-      <div class="card" role="radiogroup" aria-label="Mini island">
-        {#each VISIBILITY as option (option.value)}
-          {@const checked = preferences.value.islandVisibility === option.value}
-          <button class="row option" role="radio" aria-checked={checked} onclick={() => setVisibility(option.value)}>
+      <h2>{t('settings.general.miniIsland')}</h2>
+      <div class="card" role="radiogroup" aria-label={t('settings.general.miniIsland')}>
+        {#each VISIBILITY as option (option)}
+          {@const checked = preferences.value.islandVisibility === option}
+          <button class="row option" role="radio" aria-checked={checked} onclick={() => setVisibility(option)}>
             <span class="radio" class:checked></span>
             <span class="text">
-              <span class="label">{option.label}</span>
-              <span class="hint">{option.hint}</span>
+              <span class="label">{t(`settings.general.${option}`)}</span>
+              <span class="hint">{t(`settings.general.${option}Hint`)}</span>
             </span>
           </button>
-          {#if option.value === 'autoHide' && checked}
+          {#if option === 'autoHide' && checked}
             <div class="row delay">
               <label class="text" for="auto-hide-delay">
-                <span class="label">Delay</span>
-                <span class="hint">
-                  How long the mini island stays, from {AUTO_HIDE_DELAY_S.min} to {AUTO_HIDE_DELAY_S.max} seconds.
-                </span>
+                <span class="label">{t('settings.general.delay')}</span>
+                <span class="hint">{t('settings.general.delayHint', AUTO_HIDE_DELAY_S)}</span>
               </label>
               <span class="field">
                 <input
@@ -454,37 +485,34 @@
                   value={preferences.value.autoHideDelayMs / 1000}
                   onchange={(event) => setDelay(event, 'autoHideDelayMs', AUTO_HIDE_DELAY_S)}
                 />
-                <span class="unit">s</span>
+                <span class="unit">{t('settings.seconds')}</span>
               </span>
             </div>
             <div class="row delay">
               <div class="text">
-                <div class="label">Show on music changes</div>
-                <div class="hint">The mini island appears when a track starts, pauses or changes.</div>
+                <div class="label">{t('settings.general.showOnMusic')}</div>
+                <div class="hint">{t('settings.general.showOnMusicHint')}</div>
               </div>
               <button
                 class="switch"
                 class:on={preferences.value.showOnMediaChange}
                 role="switch"
                 aria-checked={preferences.value.showOnMediaChange}
-                aria-label="Show on music changes"
+                aria-label={t('settings.general.showOnMusic')}
                 onclick={() => toggle('showOnMediaChange')}
               ><span></span></button>
             </div>
           {/if}
         {/each}
       </div>
-      <p class="note">In every mode, point at the top edge of the screen to open the island.</p>
+      <p class="note">{t('settings.general.edgeNote')}</p>
 
-      <h2>Opening</h2>
+      <h2>{t('settings.general.opening')}</h2>
       <div class="card">
         <div class="row">
           <label class="text" for="open-delay">
-            <span class="label">Hover delay</span>
-            <span class="hint">
-              How long to hold the pointer at the top edge before the island opens, from {OPEN_DELAY_S.min} to
-              {OPEN_DELAY_S.max} seconds. A longer delay prevents accidental opens.
-            </span>
+            <span class="label">{t('settings.general.hoverDelay')}</span>
+            <span class="hint">{t('settings.general.hoverDelayHint', OPEN_DELAY_S)}</span>
           </label>
           <span class="field">
             <input
@@ -496,20 +524,24 @@
               value={preferences.value.openDelayMs / 1000}
               onchange={(event) => setDelay(event, 'openDelayMs', OPEN_DELAY_S)}
             />
-            <span class="unit">s</span>
+            <span class="unit">{t('settings.seconds')}</span>
           </span>
         </div>
       </div>
     {:else if section === 'widgets'}
       <div class="head">
-        <h1>Widgets</h1>
+        <h1>{t('settings.widgets.title')}</h1>
         <div class="actions">
-          <button class="secondary" onclick={openWidgetsFolder}><FolderOpen size={15} weight="fill" /> Open widgets folder</button>
-          <button class="secondary" onclick={reloadWidgets}><ArrowClockwise size={15} weight="bold" /> Reload</button>
+          <button class="secondary" onclick={openWidgetsFolder}>
+            <FolderOpen size={15} weight="fill" /> {t('settings.widgets.openFolder')}
+          </button>
+          <button class="secondary" onclick={reloadWidgets}>
+            <ArrowClockwise size={15} weight="bold" /> {t('settings.widgets.reload')}
+          </button>
         </div>
       </div>
 
-      <h2>In the island</h2>
+      <h2>{t('settings.widgets.inIsland')}</h2>
       <div class="card" class:instant={reorder.instant} bind:this={layoutList}>
         {#each layout as entry, index (entry.id)}
           <div
@@ -520,8 +552,8 @@
           >
             <button
               class="grip"
-              aria-label="Move {entry.name}. Use the up and down arrows."
-              title="Drag to change the order"
+              aria-label={t('settings.widgets.moveHint', { name: entry.name })}
+              title={t('settings.widgets.dragToReorder')}
               onpointerdown={(event) => reorder.start(event, index, layoutRows())}
               onpointermove={(event) => reorder.move(event)}
               onpointerup={(event) => reorder.end(event)}
@@ -537,23 +569,23 @@
               class:on={entry.enabled}
               role="switch"
               aria-checked={entry.enabled}
-              aria-label="Show {entry.name}"
+              aria-label={t('settings.widgets.show', { name: entry.name })}
               onclick={() => toggleWidget(entry.id, !entry.enabled)}
             ><span></span></button>
           </div>
         {/each}
       </div>
-      <p class="note">Drag to change the order. You can also arrange widgets in the island itself with the pencil button.</p>
+      <p class="note">{t('settings.widgets.orderNote')}</p>
 
-      <h2>Built in</h2>
+      <h2>{t('settings.widgets.builtIn')}</h2>
       <div class="card">
-        {#each BUILT_IN as widget (widget.id)}
+        {#each builtIn as widget (widget.id)}
           <div class="row">
             <div class="text">
               <div class="label">{widget.name}</div>
               <div class="hint">{widget.description}</div>
             </div>
-            <span class="badge">Built in</span>
+            <span class="badge">{t('settings.widgets.builtIn')}</span>
           </div>
           {@render widgetSettingRows({ id: widget.id, settings: builtInSettings[widget.id] ?? [] })}
         {/each}
@@ -563,13 +595,13 @@
               <div class="label">{widget.name}</div>
               <div class="hint">{widget.description}</div>
             </div>
-            <span class="badge">Built in</span>
+            <span class="badge">{t('settings.widgets.builtIn')}</span>
           </div>
           {@render widgetSettingRows(widget)}
         {/each}
       </div>
 
-      <h2>Add a widget</h2>
+      <h2>{t('settings.widgets.add')}</h2>
       <div class="card installer">
         <form class="row" onsubmit={installFromLink}>
           <span class="source-icon"><GithubLogo size={18} weight="fill" /></span>
@@ -577,49 +609,56 @@
             class="text-input link-input"
             type="text"
             placeholder="https://github.com/owner/widget"
-            aria-label="Link to a widget on GitHub"
+            aria-label={t('settings.widgets.githubLink')}
             spellcheck="false"
             autocomplete="off"
             bind:value={link}
             disabled={installer.busy !== null}
           />
           {#if !installer.pending}
-            <button class="primary" type="submit" disabled={installer.busy !== null || !link.trim()}>Install</button>
+            <button class="primary" type="submit" disabled={installer.busy !== null || !link.trim()}>
+              {t('settings.widgets.install')}
+            </button>
           {/if}
         </form>
         <div class="row local">
-          <span class="hint">Or from this computer. You can also drop it on this window.</span>
+          <span class="hint">{t('settings.widgets.fromComputer')}</span>
           <button class="secondary" onclick={() => installer.choose('zip')} disabled={installer.busy !== null}>
-            <FileZip size={15} weight="fill" /> Zip archive…
+            <FileZip size={15} weight="fill" /> {t('settings.widgets.zip')}
           </button>
           <button class="secondary" onclick={() => installer.choose('folder')} disabled={installer.busy !== null}>
-            <Folder size={15} weight="fill" /> Folder…
+            <Folder size={15} weight="fill" /> {t('settings.widgets.folder')}
           </button>
         </div>
         {#if installer.busy === 'checking'}
           <div class="row progress">
-            <span class="spin"><CircleNotch size={16} weight="bold" /></span> Getting the widget and checking it…
+            <span class="spin"><CircleNotch size={16} weight="bold" /></span> {t('settings.widgets.checking')}
           </div>
         {/if}
         {#if installer.pending}
-          {@const { manifest, origin, replaces } = installer.pending}
+          {@const { origin, replaces } = installer.pending}
+          {@const manifest = localized(installer.pending.manifest)}
           <div class="row review">
             <div class="text">
               <div class="label">{manifest.name} <span class="version">{manifest.version}</span></div>
               {#if manifest.description}<div class="hint">{manifest.description}</div>{/if}
-              <div class="hint">{manifest.author ? `By ${manifest.author} · ` : ''}{manifest.id}</div>
-              <div class="hint origin">From {origin}</div>
+              <div class="hint">
+                {manifest.author ? `${t('settings.widgets.by', { author: manifest.author })} · ` : ''}{manifest.id}
+              </div>
+              <div class="hint origin">{t('settings.widgets.from', { origin })}</div>
               {#if replaces}
-                <div class="hint">Replaces the installed version {replaces}. Its settings and data are kept.</div>
+                <div class="hint">{t('settings.widgets.replaces', { version: replaces })}</div>
               {/if}
               {@render permissionChips(manifest)}
-              <div class="hint">The widget runs in a sandbox and gets only what is listed above.</div>
+              <div class="hint">{t('settings.widgets.sandbox')}</div>
             </div>
           </div>
           <div class="row review-actions">
-            <button class="secondary" onclick={() => installer.cancel()} disabled={installer.busy !== null}>Cancel</button>
+            <button class="secondary" onclick={() => installer.cancel()} disabled={installer.busy !== null}>
+              {t('settings.widgets.cancel')}
+            </button>
             <button class="primary" onclick={confirmInstall} disabled={installer.busy !== null}>
-              {replaces ? 'Update' : 'Install'}
+              {replaces ? t('settings.widgets.update') : t('settings.widgets.install')}
             </button>
           </div>
         {/if}
@@ -627,7 +666,7 @@
         {#if installer.done}<div class="row message ok">{installer.done}</div>{/if}
       </div>
 
-      <h2>Installed</h2>
+      <h2>{t('settings.widgets.installed')}</h2>
       {#if installedWidgets.length}
         <div class="card">
           {#each installedWidgets as widget (widget.id)}
@@ -637,15 +676,22 @@
                 <div class="hint">{widget.description || widget.id}</div>
                 {@render permissionChips(widget)}
               </div>
-              <span class="badge">{widget.source === 'dev' ? 'Development' : widget.author || 'Installed'}</span>
+              <span class="badge">
+                {widget.source === 'dev' ? t('settings.widgets.development') : widget.author || t('settings.widgets.installed')}
+              </span>
               {#if widget.source === 'user'}
                 {#if removing === widget.id}
                   <span class="confirm">
-                    <button class="link remove" onclick={() => uninstall(widget)}>Remove</button>
-                    <button class="link" onclick={() => (removing = null)}>Keep</button>
+                    <button class="link remove" onclick={() => uninstall(widget)}>{t('settings.widgets.remove')}</button>
+                    <button class="link" onclick={() => (removing = null)}>{t('settings.widgets.keep')}</button>
                   </span>
                 {:else}
-                  <button class="icon-button" title="Remove" aria-label="Remove {widget.name}" onclick={() => (removing = widget.id)}>
+                  <button
+                    class="icon-button"
+                    title={t('settings.widgets.remove')}
+                    aria-label={t('settings.widgets.removeNamed', { name: widget.name })}
+                    onclick={() => (removing = widget.id)}
+                  >
                     <Trash size={16} />
                   </button>
                 {/if}
@@ -655,39 +701,34 @@
           {/each}
         </div>
       {:else}
-        <div class="card empty">No widgets installed yet. Add one with a GitHub link, a zip archive or a folder.</div>
+        <div class="card empty">{t('settings.widgets.none')}</div>
       {/if}
       {#if info.widgetsDir}<p class="path">{info.widgetsDir}</p>{/if}
     {:else if section === 'media'}
-      <h1>Media</h1>
-      <p class="intro">
-        Apps that appear in the Windows media controls show up on the island by themselves. Some browsers, such as
-        Yandex Browser, do not publish their media there; the Lizun browser extension brings their tabs in.
-      </p>
+      <h1>{t('settings.media.title')}</h1>
+      <p class="intro">{t('settings.media.intro')}</p>
 
-      <h2>Browser extension</h2>
+      <h2>{t('settings.media.extension')}</h2>
       <div class="card">
         <div class="row">
           <div class="text">
-            <div class="label">Browser media</div>
-            <div class="hint">Show music and videos that the Lizun extension finds in browser tabs.</div>
+            <div class="label">{t('settings.media.browserMedia')}</div>
+            <div class="hint">{t('settings.media.browserMediaHint')}</div>
           </div>
           <button
             class="switch"
             class:on={preferences.value.browserMedia}
             role="switch"
             aria-checked={preferences.value.browserMedia}
-            aria-label="Browser media"
+            aria-label={t('settings.media.browserMedia')}
             onclick={() => toggle('browserMedia')}
           ><span></span></button>
         </div>
         {#if preferences.value.browserMedia}
           <div class="row">
             <label class="text" for="browser-media-port">
-              <span class="label">Port</span>
-              <span class="hint">
-                The extension connects here; its popup has to show the same port. From {PORTS.min} to {PORTS.max}.
-              </span>
+              <span class="label">{t('settings.media.port')}</span>
+              <span class="hint">{t('settings.media.portHint', PORTS)}</span>
             </label>
             <span class="field">
               <input
@@ -704,7 +745,7 @@
           </div>
           <div class="row">
             <div class="text">
-              <div class="label">Status</div>
+              <div class="label">{t('settings.media.status')}</div>
               <div class="hint status {browserMediaState.tone}">{browserMediaState.text}</div>
             </div>
           </div>
@@ -712,35 +753,34 @@
       </div>
 
       {#if preferences.value.browserMedia}
-        <h2>Setup</h2>
+        {@const [installBefore, installAfter] = tSplit('settings.media.installExtension', 'name')}
+        {@const [portBefore, portAfter] = tSplit('settings.media.samePort', 'port')}
+        <h2>{t('settings.media.setup')}</h2>
         <div class="card">
           <ol class="steps">
-            <li>Install the <b>Lizun</b> browser extension for Chrome, Yandex Browser, Edge, Opera or Firefox.</li>
-            <li>Reload the tabs that were open before the extension was installed.</li>
-            <li>
-              If you changed the port, enter <b>{preferences.value.browserMediaPort}</b> in the extension's popup as
-              well.
-            </li>
+            <li>{installBefore}<b>Lizun</b>{installAfter}</li>
+            <li>{t('settings.media.reloadTabs')}</li>
+            <li>{portBefore}<b>{preferences.value.browserMediaPort}</b>{portAfter}</li>
           </ol>
         </div>
       {/if}
     {:else}
-      <h1>About</h1>
+      <h1>{t('settings.about.title')}</h1>
       <div class="card about">
         <span class="logo big"></span>
         <div class="text">
           <div class="label">Lizun {info.version}</div>
-          <div class="hint">Open-source dynamic island with installable widgets.</div>
+          <div class="hint">{t('settings.about.tagline')}</div>
         </div>
       </div>
-      <button class="danger" onclick={() => invoke('app_quit')}>Quit Lizun</button>
+      <button class="danger" onclick={() => invoke('app_quit')}>{t('settings.about.quit')}</button>
     {/if}
 
     {#if error}<p class="error">{error}</p>{/if}
   </main>
 
   {#if dropping}
-    <div class="drop"><div>Drop a zip archive or a widget folder to install it</div></div>
+    <div class="drop"><div>{t('settings.widgets.drop')}</div></div>
   {/if}
 </div>
 

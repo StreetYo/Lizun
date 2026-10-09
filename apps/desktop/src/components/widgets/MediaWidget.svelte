@@ -5,6 +5,7 @@
   import SkipBack from 'phosphor-svelte/lib/SkipBack';
   import SkipForward from 'phosphor-svelte/lib/SkipForward';
   import ArrowsLeftRight from 'phosphor-svelte/lib/ArrowsLeftRight';
+  import { t } from '../../lib/i18n.svelte';
   import { media, sourceName, type MediaCommand } from '../../lib/media.svelte';
   import { ui } from '../../lib/ui.svelte';
 
@@ -56,23 +57,27 @@
         <div class="art placeholder"><MusicNotes size={30} weight="fill" /></div>
       {/if}
       <div class="info">
-        <div class="title">{np.title || 'Unknown title'}</div>
+        <div class="title">{np.title || t('media.unknownTitle')}</div>
         <div class="artist">{np.artist || sourceName(np.sourceApp)}</div>
         <div class="controls">
-          <button disabled={!np.canPrevious} onclick={() => control('previous')} title="Previous">
+          <button disabled={!np.canPrevious} onclick={() => control('previous')} title={t('media.previous')}>
             <SkipBack size={17} weight="fill" />
           </button>
-          <button class="play" disabled={!np.canToggle} onclick={() => control('togglePlayPause')} title="Play/Pause">
+          <button class="play" disabled={!np.canToggle} onclick={() => control('togglePlayPause')} title={t('media.playPause')}>
             {#if np.playing}<Pause size={21} weight="fill" />{:else}<Play size={21} weight="fill" />{/if}
           </button>
-          <button disabled={!np.canNext} onclick={() => control('next')} title="Next">
+          <button disabled={!np.canNext} onclick={() => control('next')} title={t('media.next')}>
             <SkipForward size={17} weight="fill" />
           </button>
           {#if next}
             <button
               class="source"
               onclick={switchSource}
-              title={`${sourceName(np.sourceApp)}. Switch to ${sourceName(next.sourceApp)}: ${next.title}`}
+              title={t('media.switchSource', {
+                current: sourceName(np.sourceApp),
+                next: sourceName(next.sourceApp),
+                title: next.title,
+              })}
             >
               <ArrowsLeftRight size={14} weight="bold" />
               <span>{shownIndex + 1}/{media.players.length}</span>
@@ -93,7 +98,7 @@
   {:else}
     <div class="empty">
       <MusicNotes size={28} weight="fill" />
-      <span>Nothing playing</span>
+      <span>{t('media.nothingPlaying')}</span>
     </div>
   {/if}
 </section>

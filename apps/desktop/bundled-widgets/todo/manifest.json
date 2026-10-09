@@ -32,5 +32,22 @@
       "description": "The first open task and how many more are left.",
       "default": true
     }
-  ]
+  ],
+  "locales": {
+    "ru": {
+      "name": "Задачи",
+      "description": "Короткий список текущих дел",
+      "settings": {
+        "completed": {
+          "label": "Выполненные задачи",
+          "options": { "inPlace": "Оставлять на месте", "bottom": "Переносить вниз", "hidden": "Скрывать" }
+        },
+        "newOnTop": { "label": "Добавлять новые задачи наверх" },
+        "showInIsland": {
+          "label": "Показывать следующую задачу в закрытом острове",
+          "description": "Первая невыполненная задача и сколько ещё осталось."
+        }
+      }
+    }
+  }
 }

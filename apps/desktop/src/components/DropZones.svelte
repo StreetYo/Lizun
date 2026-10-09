@@ -2,6 +2,7 @@
   import ShareNetwork from 'phosphor-svelte/lib/ShareNetwork';
   import Tray from 'phosphor-svelte/lib/Tray';
   import { fileTray } from '../lib/fileTray.svelte';
+  import { t } from '../lib/i18n.svelte';
 
   let { active }: { active: string | null } = $props();
 </script>
@@ -9,13 +10,13 @@
 <div class="zones">
   <div class="zone tray" class:active={active === 'tray'} data-drop-zone="tray">
     <Tray size={24} weight="fill" />
-    <span>Files Tray</span>
-    {#if fileTray.files.length}<small>{fileTray.files.length} files</small>{/if}
+    <span>{t('island.dropTray')}</span>
+    {#if fileTray.files.length}<small>{t('island.dropFiles', { count: fileTray.files.length })}</small>{/if}
   </div>
   <div class="zone share" class:active={active === 'share'} data-drop-zone="share">
     <ShareNetwork size={24} weight="fill" />
-    <span>Share</span>
-    <small>coming soon</small>
+    <span>{t('island.dropShare')}</span>
+    <small>{t('island.comingSoon')}</small>
   </div>
 </div>
 

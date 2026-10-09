@@ -1,6 +1,7 @@
 import { open } from '@tauri-apps/plugin-dialog';
+import { t } from '../i18n.svelte';
 import { invoke, isTauri } from '../platform';
-import type { WidgetManifest } from './registry.svelte';
+import { localized, type WidgetManifest } from './registry.svelte';
 
 /** Where to install a widget from (see src-tauri/src/widget_install.rs). */
 export type InstallSource = { kind: 'github'; url: string } | { kind: 'path'; path: string };
@@ -42,8 +43,8 @@ export class WidgetInstaller {
     if (!isTauri) return this.prepare({ kind: 'path', path: kind === 'zip' ? 'C:\\Downloads\\clock.zip' : 'C:\\Widgets\\clock' });
     const path = await open(
       kind === 'zip'
-        ? { title: 'Choose a widget archive', filters: [{ name: 'Widget archive', extensions: ['zip'] }] }
-        : { title: 'Choose a widget folder', directory: true },
+        ? { title: t('settings.widgets.chooseArchive'), filters: [{ name: t('settings.widgets.archiveType'), extensions: ['zip'] }] }
+        : { title: t('settings.widgets.chooseFolder'), directory: true },
     );
     if (typeof path === 'string') await this.prepare({ kind: 'path', path });
   }
@@ -55,8 +56,10 @@ export class WidgetInstaller {
     this.error = null;
     try {
       const widgets = await invoke<WidgetManifest[]>('widgets_install_confirm', { token: pending.token });
-      const { name, version } = pending.manifest;
-      this.done = pending.replaces ? `${name} was updated to ${version}.` : `${name} was installed and is in the island now.`;
+      const { name, version } = localized(pending.manifest);
+      this.done = pending.replaces
+        ? t('settings.widgets.wasUpdated', { name, version })
+        : t('settings.widgets.wasInstalled', { name });
       this.installed(widgets);
     } catch (err) {
       this.error = String(err);

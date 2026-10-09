@@ -3,6 +3,7 @@
   import Tray from 'phosphor-svelte/lib/Tray';
   import X from 'phosphor-svelte/lib/X';
   import { fileTray, type TrayFile } from '../lib/fileTray.svelte';
+  import { t } from '../lib/i18n.svelte';
 
   let { width }: { width: number } = $props();
   let broken = $state<Record<string, boolean>>({});
@@ -56,14 +57,14 @@
         {/if}
       </div>
       <span class="name">{shortName(file.name)}</span>
-      <button class="remove" title="Remove from tray" onclick={() => fileTray.remove(file.path)}>
+      <button class="remove" title={t('island.removeFromTray')} onclick={() => fileTray.remove(file.path)}>
         <X size={9} weight="bold" />
       </button>
     </div>
   {:else}
     <div class="hint">
       <Tray size={22} weight="fill" />
-      <span>Drop files onto the island to keep them here</span>
+      <span>{t('island.trayEmpty')}</span>
     </div>
   {/each}
 </div>

@@ -13,13 +13,22 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
         return window.set_focus();
     }
     WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
-        .title("Lizun Settings")
+        .title(crate::i18n::t("settings.windowTitle"))
         .inner_size(720.0, 500.0)
         .min_inner_size(600.0, 420.0)
         .center()
         .theme(Some(tauri::Theme::Dark))
         .build()?
         .set_focus()
+}
+
+/// Gives the open settings window its title in the current language.
+pub fn relabel(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(SETTINGS_LABEL)
+        && let Err(err) = window.set_title(&crate::i18n::t("settings.windowTitle"))
+    {
+        log::warn!("could not retitle the settings window: {err}");
+    }
 }
 
 // Async so the window is built off the main thread: building a WebView inside a synchronous

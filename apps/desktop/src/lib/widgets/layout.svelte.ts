@@ -1,15 +1,21 @@
+import { t } from '../i18n.svelte';
 import { preferences, type WidgetSlot } from '../preferences.svelte';
-import type { WidgetManifest } from './registry.svelte';
+import { localized, type WidgetManifest } from './registry.svelte';
 
-/** Widgets that are part of the app. A colon cannot appear in a widget id, so an installed
- * widget never takes one of these. */
+/** Widgets that are part of the app, with the name of their texts in the locale files. A colon
+ * cannot appear in a widget id, so an installed widget never takes one of these. */
 export const BUILT_IN_WIDGETS = [
-  { id: 'builtin:media', name: 'Now Playing', description: 'Cover, playback controls and progress of the current track' },
-  { id: 'builtin:mirror', name: 'Mirror', description: 'Camera preview, off as soon as the island closes' },
-  { id: 'builtin:calendar', name: 'Calendar', description: 'The week around today, with events from your calendar link or file' },
+  { id: 'builtin:media', texts: 'media' },
+  { id: 'builtin:mirror', texts: 'mirror' },
+  { id: 'builtin:calendar', texts: 'calendar' },
 ] as const;
 
 export type BuiltInWidgetId = (typeof BUILT_IN_WIDGETS)[number]['id'];
+
+/** Name and description of a part of the app, in the current language. */
+export function builtInTexts(texts: (typeof BUILT_IN_WIDGETS)[number]['texts'] | 'tray'): { name: string; description: string } {
+  return { name: t(`builtIn.${texts}.name`), description: t(`builtIn.${texts}.description`) };
+}
 
 export interface LayoutEntry {
   id: string;
@@ -20,12 +26,12 @@ export interface LayoutEntry {
   manifest: WidgetManifest | null;
 }
 
-/** All widgets in island order: the saved order first, then widgets the user has not placed
- * yet (built-in ones before installed ones), which are shown. */
+/** All widgets in island order, named in the current language: the saved order first, then
+ * widgets the user has not placed yet (built-in ones before installed ones), which are shown. */
 export function widgetLayout(installed: WidgetManifest[], slots: WidgetSlot[] = preferences.value.widgets): LayoutEntry[] {
   const available: LayoutEntry[] = [
-    ...BUILT_IN_WIDGETS.map((widget) => ({ ...widget, enabled: true, manifest: null })),
-    ...installed.map((manifest) => ({
+    ...BUILT_IN_WIDGETS.map((widget) => ({ id: widget.id, ...builtInTexts(widget.texts), enabled: true, manifest: null })),
+    ...installed.map(localized).map((manifest) => ({
       id: manifest.id,
       name: manifest.name,
       description: manifest.description || manifest.id,

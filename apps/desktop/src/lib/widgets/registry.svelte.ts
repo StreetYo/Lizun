@@ -1,3 +1,4 @@
+import { forLanguage } from '../i18n.svelte';
 import { invoke } from '../platform';
 
 export type SettingValue = boolean | number | string;
@@ -22,6 +23,23 @@ export type SettingSpec =
       file?: { name: string; extensions: string[] };
     });
 
+/** A setting's texts in another language (see src-tauri/src/widget_settings.rs). */
+export interface SettingTexts {
+  label?: string;
+  description?: string;
+  placeholder?: string;
+  unit?: string;
+  /** Option labels by option value. */
+  options?: Record<string, string>;
+}
+
+/** A manifest's texts in another language (see docs/widgets.md#languages). */
+export interface ManifestTexts {
+  name?: string;
+  description?: string;
+  settings?: Record<string, SettingTexts>;
+}
+
 export interface WidgetManifest {
   id: string;
   name: string;
@@ -33,7 +51,40 @@ export interface WidgetManifest {
   permissions: string[];
   network: string[];
   settings: SettingSpec[];
+  /** Translations by language code. */
+  locales?: Record<string, ManifestTexts>;
   source: 'bundled' | 'dev' | 'user';
+}
+
+/** The manifest with its texts in the current language, where it has them. */
+export function localized<T extends Pick<WidgetManifest, 'name' | 'description' | 'settings' | 'locales'>>(manifest: T): T {
+  const texts = forLanguage(manifest.locales);
+  if (!texts) return manifest;
+  return {
+    ...manifest,
+    name: texts.name ?? manifest.name,
+    description: texts.description ?? manifest.description,
+    settings: manifest.settings.map((setting) => localizedSetting(setting, texts.settings?.[setting.key])),
+  };
+}
+
+function localizedSetting(setting: SettingSpec, texts: SettingTexts | undefined): SettingSpec {
+  if (!texts) return setting;
+  const common = { label: texts.label ?? setting.label, description: texts.description ?? setting.description };
+  switch (setting.type) {
+    case 'number':
+      return { ...setting, ...common, unit: texts.unit ?? setting.unit };
+    case 'text':
+      return { ...setting, ...common, placeholder: texts.placeholder ?? setting.placeholder };
+    case 'select':
+      return {
+        ...setting,
+        ...common,
+        options: setting.options.map((option) => ({ ...option, label: texts.options?.[option.value] ?? option.label })),
+      };
+    default:
+      return { ...setting, ...common };
+  }
 }
 
 class WidgetRegistry {

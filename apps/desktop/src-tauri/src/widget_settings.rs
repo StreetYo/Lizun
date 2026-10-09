@@ -5,7 +5,7 @@
 //! are fixed up against the current schema whenever they are read, so a widget always receives
 //! every declared key with a value of the declared type. Widgets can only read them.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
@@ -88,6 +88,26 @@ pub enum SettingSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         file: Option<FileChoice>,
     },
+}
+
+/// A setting's texts in another language, from the manifest's `locales`. Whatever is left out
+/// stays as declared in `settings`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SettingTexts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Text settings only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+    /// Number settings only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    /// Select settings only: option labels by option value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, String>,
 }
 
 fn default_step() -> f64 {
@@ -224,6 +244,42 @@ pub fn validate(settings: &[SettingSpec]) -> Result<(), String> {
                         return Err(field("file needs 1 to 10 extensions of letters and digits, without the dot"));
                     }
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Checks one language's setting texts against the settings they translate, with the same
+/// length limits.
+pub fn validate_texts(settings: &[SettingSpec], texts: &BTreeMap<String, SettingTexts>) -> Result<(), String> {
+    for (key, texts) in texts {
+        let setting = settings.iter().find(|setting| setting.key() == key).ok_or_else(|| format!("there is no setting {key:?}"))?;
+        let field = |name: &str| format!("setting {key:?}: {name}");
+        let fits = (texts.unit.is_none() || matches!(setting, SettingSpec::Number { .. }))
+            && (texts.placeholder.is_none() || matches!(setting, SettingSpec::Text { .. }))
+            && (texts.options.is_empty() || matches!(setting, SettingSpec::Select { .. }));
+        if !fits {
+            return Err(field("only number settings have a unit, text settings a placeholder and select settings options"));
+        }
+        if let Some(label) = &texts.label {
+            check_length(&field("label"), label, 1..=60)?;
+        }
+        if let Some(description) = &texts.description {
+            check_length(&field("description"), description, 0..=200)?;
+        }
+        if let Some(placeholder) = &texts.placeholder {
+            check_length(&field("placeholder"), placeholder, 0..=100)?;
+        }
+        if let Some(unit) = &texts.unit {
+            check_length(&field("unit"), unit, 0..=10)?;
+        }
+        if let SettingSpec::Select { options, .. } = setting {
+            for (value, label) in &texts.options {
+                if !options.iter().any(|option| &option.value == value) {
+                    return Err(field(&format!("there is no option {value:?}")));
+                }
+                check_length(&field("option label"), label, 1..=60)?;
             }
         }
     }

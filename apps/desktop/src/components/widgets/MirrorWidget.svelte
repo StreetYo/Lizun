@@ -1,5 +1,6 @@
 <script lang="ts">
   import Webcam from 'phosphor-svelte/lib/Webcam';
+  import { t } from '../../lib/i18n.svelte';
   import { ui } from '../../lib/ui.svelte';
 
   let stream = $state<MediaStream | null>(null);
@@ -12,7 +13,7 @@
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 320 }, audio: false });
     } catch (err) {
-      error = err instanceof Error ? err.name : 'Camera unavailable';
+      error = err instanceof Error ? err.name : t('mirror.unavailable');
     }
   }
 
@@ -32,12 +33,12 @@
 </script>
 
 <section class="mirror">
-  <button class="circle" onclick={toggle} title={stream ? 'Turn camera off' : 'Show camera'}>
+  <button class="circle" onclick={toggle} title={stream ? t('mirror.turnOff') : t('mirror.showCamera')}>
     {#if stream}
       <video bind:this={video} autoplay muted playsinline></video>
     {:else}
       <Webcam size={26} weight="fill" />
-      <span>{error ?? 'Mirror'}</span>
+      <span>{error ?? t('mirror.label')}</span>
     {/if}
   </button>
 </section>
