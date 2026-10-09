@@ -8,6 +8,7 @@
     COLLAPSED_HEIGHT,
     COLLAPSED_RADIUS,
     CAPSULE_MIN_WIDTH,
+    CONCEALED_WIDTH_SCALE,
     DROP_SIZE,
     EXPANDED_RADIUS,
     HOT_ZONE_HEIGHT,
@@ -20,7 +21,17 @@
   import { miniIsland } from '../lib/miniIsland.svelte';
   import { onFileDrag, setHitRegion } from '../lib/platform';
   import { preferences } from '../lib/preferences.svelte';
-  import { CLOSE_SPRING, OPEN_SPRING, Spring } from '../lib/spring';
+  import {
+    CLOSE_SPRING,
+    CONTENT_HIDE_SPRING,
+    CONTENT_IN_SPRING,
+    CONTENT_OUT_SPRING,
+    CONTENT_SCALE_IN_SPRING,
+    HIDE_SPRING,
+    OPEN_SPRING,
+    Spring,
+    type SpringParams,
+  } from '../lib/spring';
   import { ui, type PanelTab } from '../lib/ui.svelte';
   import DropZones from './DropZones.svelte';
   import LiveActivity from './LiveActivity.svelte';
@@ -86,8 +97,9 @@
   const target: IslandSize = $derived.by(() => {
     if (mode === 'expanded') return { ...panelSize, radius: EXPANDED_RADIUS };
     if (mode === 'dropping') return { ...DROP_SIZE, radius: EXPANDED_RADIUS };
-    if (concealed) return { width: PILL_WIDTH, height: 0, radius: 0 };
     const width = Math.max(CAPSULE_MIN_WIDTH, Math.ceil(capsuleWidth));
+    // Going into the edge it narrows while it rises, and comes back out the same way.
+    if (concealed) return { width: Math.round(width * CONCEALED_WIDTH_SCALE), height: 0, radius: COLLAPSED_RADIUS };
     return { width, height: COLLAPSED_HEIGHT, radius: COLLAPSED_RADIUS };
   });
 
@@ -95,6 +107,41 @@
   const width = new Spring(PILL_WIDTH);
   const height = new Spring(0);
   const radius = new Spring(0);
+
+  /** A content layer fades in, sharpens and grows to full size on springs that run in the same
+   * frames as the shape, so a change of mind mid-way carries on from where it is. */
+  class Layer {
+    element!: HTMLDivElement;
+    readonly shown = new Spring(0, CONTENT_IN_SPRING, 0.01);
+    readonly scale: Spring;
+
+    constructor(hiddenScale: number) {
+      this.scale = new Spring(hiddenScale, CONTENT_IN_SPRING, 0.01);
+    }
+
+    show(shown: boolean, scale: number, params: SpringParams, scaleParams = params): void {
+      this.shown.setTarget(shown ? 1 : 0, params);
+      this.scale.setTarget(scale, scaleParams);
+    }
+
+    step(dt: number): boolean {
+      return [this.shown.step(dt), this.scale.step(dt)].every(Boolean);
+    }
+
+    render(): void {
+      const shown = Math.min(1, Math.max(0, this.shown.value));
+      this.element.style.opacity = shown.toFixed(3);
+      this.element.style.filter = shown > 0.999 ? 'none' : `blur(${(8 * (1 - shown)).toFixed(2)}px)`;
+      this.element.style.scale = this.scale.value.toFixed(4);
+    }
+  }
+
+  const LIVE_HIDDEN_SCALE = 0.82;
+  const PANEL_HIDDEN_SCALE = 0.94;
+  const live = new Layer(LIVE_HIDDEN_SCALE);
+  const panel = new Layer(PANEL_HIDDEN_SCALE);
+  const drop = new Layer(PANEL_HIDDEN_SCALE);
+  const layers = [live, panel, drop];
 
   let frame = 0;
   let lastTime = 0;
@@ -109,13 +156,16 @@
     // The shadow grows with the height, so the collapsed pill stays flat.
     const openness = Math.min(1, Math.max(0, (height.value - COLLAPSED_HEIGHT) / 80));
     island.style.setProperty('--shadow-alpha', (0.55 * openness).toFixed(3));
+    for (const layer of layers) layer.render();
   }
 
   function tick(now: number): void {
     const dt = lastTime ? Math.min((now - lastTime) / 1000, 0.064) : 1 / 60;
     lastTime = now;
     timestamps.push(now);
-    const settled = [width.step(dt), height.step(dt), radius.step(dt)].every(Boolean);
+    const settled = [width.step(dt), height.step(dt), radius.step(dt), ...layers.map((layer) => layer.step(dt))].every(
+      Boolean,
+    );
     render();
     if (settled) {
       frame = 0;
@@ -139,18 +189,18 @@
   function updateRegion(): void {
     const w = Math.max(width.value, target.width);
     const h = Math.max(height.value, target.height);
-    const x = (window.innerWidth - w) / 2;
     if (concealed && h < 1) {
       setHitRegion([
         {
-          x: Math.floor(x - HOVER_MARGIN),
+          x: Math.floor((window.innerWidth - PILL_WIDTH) / 2 - HOVER_MARGIN),
           y: 0,
-          width: Math.ceil(w + HOVER_MARGIN * 2),
+          width: PILL_WIDTH + HOVER_MARGIN * 2,
           height: HOT_ZONE_HEIGHT,
         },
       ]);
       return;
     }
+    const x = (window.innerWidth - w) / 2;
     const open = h > COLLAPSED_HEIGHT + 1;
     const side = open ? SHADOW_MARGIN.side : HOVER_MARGIN;
     const bottom = open ? SHADOW_MARGIN.bottom : HOVER_MARGIN;
@@ -165,17 +215,37 @@
   }
 
   $effect(() => {
-    const params = mode === 'collapsed' ? CLOSE_SPRING : OPEN_SPRING;
+    const params = mode !== 'collapsed' ? OPEN_SPRING : concealed ? HIDE_SPRING : CLOSE_SPRING;
     width.setTarget(target.width, params);
     height.setTarget(target.height, params);
     radius.setTarget(target.radius, params);
     // Grow the input region before the island grows into it; it shrinks once settled.
     untrack(updateRegion);
-    if (!frame) {
-      timestamps = [];
-      frame = requestAnimationFrame(tick);
-    }
+    animate();
   });
+
+  // Content comes in behind the shape and goes at once. The mini island's content shrinks into
+  // the edge with it; under the open panel it only fades.
+  $effect(() => {
+    const showLive = mode === 'collapsed' && !concealed;
+    if (showLive) live.show(true, 1, CONTENT_IN_SPRING, CONTENT_SCALE_IN_SPRING);
+    else if (concealed) live.show(false, LIVE_HIDDEN_SCALE, CONTENT_HIDE_SPRING);
+    else live.show(false, 1, CONTENT_OUT_SPRING);
+    for (const [layer, shown] of [
+      [panel, mode === 'expanded'],
+      [drop, mode === 'dropping'],
+    ] as const) {
+      if (shown) layer.show(true, 1, CONTENT_IN_SPRING, CONTENT_SCALE_IN_SPRING);
+      else layer.show(false, PANEL_HIDDEN_SCALE, CONTENT_OUT_SPRING);
+    }
+    untrack(animate);
+  });
+
+  function animate(): void {
+    if (frame) return;
+    timestamps = [];
+    frame = requestAnimationFrame(tick);
+  }
 
   $effect(() => {
     void concealed;
@@ -303,21 +373,22 @@
   aria-label="Lizun"
 >
   {#if concealed}
-    <div class="sensor" style:width="{target.width + 2 * HOVER_MARGIN}px" style:height="{HOT_ZONE_HEIGHT}px"></div>
+    <div class="sensor" style:width="{PILL_WIDTH + 2 * HOVER_MARGIN}px" style:height="{HOT_ZONE_HEIGHT}px"></div>
   {/if}
   <div class="island" bind:this={island}>
-    <div class="layer live" class:visible={mode === 'collapsed' && !concealed}>
+    <div class="layer live" class:visible={mode === 'collapsed' && !concealed} bind:this={live.element}>
       <LiveActivity active={mode === 'collapsed' && !concealed} bind:width={capsuleWidth} />
     </div>
     <div
       class="layer centered"
       class:visible={mode === 'expanded'}
+      bind:this={panel.element}
       bind:clientWidth={panelSize.width}
       bind:clientHeight={panelSize.height}
     >
       <Panel bind:tab />
     </div>
-    <div class="layer centered" class:visible={mode === 'dropping'}>
+    <div class="layer centered" class:visible={mode === 'dropping'} bind:this={drop.element}>
       <DropZones active={dropZone} />
     </div>
   </div>
@@ -348,26 +419,17 @@
     box-shadow: 0 14px 34px rgba(0, 0, 0, var(--shadow-alpha, 0));
   }
 
+  /* Opacity, blur and scale are driven by springs in the script. */
   .layer {
     position: absolute;
     top: 0;
     opacity: 0;
-    filter: blur(8px);
     pointer-events: none;
-    transition:
-      opacity 120ms ease,
-      filter 160ms ease,
-      scale 160ms ease;
+    transform-origin: top center;
   }
 
   .layer.visible {
-    opacity: 1;
-    filter: none;
     pointer-events: auto;
-    transition:
-      opacity 240ms ease 70ms,
-      filter 320ms ease 70ms,
-      scale 380ms cubic-bezier(0.2, 0.8, 0.2, 1) 40ms;
   }
 
   .layer.live {
@@ -380,11 +442,5 @@
     left: 50%;
     translate: -50% 0;
     width: max-content;
-    scale: 0.96;
-    transform-origin: top center;
-  }
-
-  .layer.centered.visible {
-    scale: 1;
   }
 </style>

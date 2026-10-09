@@ -10,10 +10,27 @@ export interface SpringParams {
   damping: number;
 }
 
+/** A spring described the way SwiftUI does since iOS 17: how long it takes and how much it
+ * bounces (0 = none, 0.3 = a clear bounce). */
+export function spring(duration: number, bounce = 0): SpringParams {
+  return { response: duration, damping: 1 - bounce };
+}
+
+// Island shape.
 /** Opening: measured from the reference recording, about 7% overshoot. */
-export const OPEN_SPRING: SpringParams = { response: 0.5, damping: 0.65 };
-/** Closing: quicker and without bounce. */
-export const CLOSE_SPRING: SpringParams = { response: 0.34, damping: 1 };
+export const OPEN_SPRING = spring(0.5, 0.35);
+/** Back to the mini island, and the mini island coming out or changing width: quicker, with a
+ * small bounce. It stays within the hover margin around the capsule. */
+export const CLOSE_SPRING = spring(0.4, 0.2);
+/** The mini island going into the top edge: no bounce, there is nothing to bounce against. */
+export const HIDE_SPRING = spring(0.42);
+
+// Content: it fades in and sharpens a little behind the shape, and goes at once.
+export const CONTENT_IN_SPRING = spring(0.45);
+export const CONTENT_SCALE_IN_SPRING = spring(0.5, 0.3);
+export const CONTENT_OUT_SPRING = spring(0.2);
+/** Content of the mini island shrinking into the edge along with the shape. */
+export const CONTENT_HIDE_SPRING = spring(0.36);
 
 const SETTLE_DISTANCE = 0.05;
 const SETTLE_VELOCITY = 0.5;
@@ -23,11 +40,14 @@ export class Spring {
   velocity = 0;
   target: number;
   params: SpringParams;
+  private readonly precision: number;
 
-  constructor(value: number, params: SpringParams = OPEN_SPRING) {
+  /** `precision` scales when the spring counts as settled: 1 suits pixels, 0.01 a 0–1 value. */
+  constructor(value: number, params: SpringParams = OPEN_SPRING, precision = 1) {
     this.value = value;
     this.target = value;
     this.params = params;
+    this.precision = precision;
   }
 
   setTarget(target: number, params: SpringParams = this.params): void {
@@ -36,7 +56,10 @@ export class Spring {
   }
 
   get settled(): boolean {
-    return Math.abs(this.value - this.target) < SETTLE_DISTANCE && Math.abs(this.velocity) < SETTLE_VELOCITY;
+    return (
+      Math.abs(this.value - this.target) < SETTLE_DISTANCE * this.precision &&
+      Math.abs(this.velocity) < SETTLE_VELOCITY * this.precision
+    );
   }
 
   /** Advances the spring by `dt` seconds; returns true once it has come to rest. */

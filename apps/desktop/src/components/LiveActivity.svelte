@@ -81,31 +81,53 @@
     warning: Warning,
   };
 
-  const content = $derived(miniIsland.content);
-  const lastFile = $derived(fileTray.files.at(-1));
+  type Shown = {
+    content: NonNullable<typeof miniIsland.content>;
+    nowPlaying: typeof media.nowPlaying;
+    artwork: typeof media.artwork;
+    tint: typeof media.tint;
+    lastFile: (typeof fileTray.files)[number] | undefined;
+  };
+
+  /** What the capsule shows. When the activity ends it is kept, so the capsule goes into the
+   * edge with it rather than emptying first. */
+  let shown = $state.raw<Shown | null>(null);
+
+  $effect.pre(() => {
+    const content = miniIsland.content;
+    if (!content) return;
+    shown = {
+      content,
+      nowPlaying: media.nowPlaying,
+      artwork: media.artwork,
+      tint: media.tint,
+      lastFile: fileTray.files.at(-1),
+    };
+  });
 </script>
 
 <!-- Windows has no camera notch, so the closed island is a capsule as wide as what it shows:
      something at each end and a line of text in the middle. -->
 <div class="capsule" style:max-width="{CAPSULE_MAX_WIDTH}px" bind:clientWidth={width}>
-  {#if content?.kind === 'media' && media.nowPlaying}
-    {#if media.artwork}
-      <img class="art" src={media.artwork} alt="" />
+  {#if shown?.content.kind === 'media' && shown.nowPlaying}
+    {@const { nowPlaying } = shown}
+    {#if shown.artwork}
+      <img class="art" src={shown.artwork} alt="" />
     {:else}
       <div class="art"></div>
     {/if}
     <span class="title">
-      {media.nowPlaying.title}{#if media.nowPlaying.artist}<span class="secondary">{` · ${media.nowPlaying.artist}`}</span>{/if}
+      {nowPlaying.title}{#if nowPlaying.artist}<span class="secondary">{` · ${nowPlaying.artist}`}</span>{/if}
     </span>
-    <div class="bars" class:playing={media.nowPlaying.playing && active} style:--tint={media.tint}>
+    <div class="bars" class:playing={nowPlaying.playing && active} style:--tint={shown.tint}>
       <span></span><span></span><span></span><span></span>
     </div>
-  {:else if content?.kind === 'tray'}
+  {:else if shown?.content.kind === 'tray'}
     <Tray size={17} weight="fill" />
-    {#if lastFile}<span class="title">{lastFile.name}</span>{/if}
-    <span class="part">{content.count}<FileIcon size={13} weight="fill" /></span>
-  {:else if content?.kind === 'widget'}
-    {@const { leading, title, trailing } = content.activity}
+    {#if shown.lastFile}<span class="title">{shown.lastFile.name}</span>{/if}
+    <span class="part">{shown.content.count}<FileIcon size={13} weight="fill" /></span>
+  {:else if shown?.content.kind === 'widget'}
+    {@const { leading, title, trailing } = shown.content.activity}
     {#if leading}{@render part(leading)}{/if}
     {#if title}<span class="title">{title}</span>{/if}
     {#if trailing}{@render part(trailing)}{/if}
