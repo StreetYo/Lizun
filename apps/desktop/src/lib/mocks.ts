@@ -31,6 +31,7 @@ let mockPreferences: unknown = {
 /** Widgets the preview lists; empty, but a test can push manifests into it. */
 export const mockWidgets: { id: string; settings: { key: string; default: unknown }[] }[] = [];
 const mockWidgetSettings: Record<string, Record<string, unknown>> = {};
+let mockPending: { id: string } & Record<string, unknown> | null = null;
 
 function mockSettingsOf(widgetId: string): Record<string, unknown> {
   const widget = mockWidgets.find((w) => w.id === widgetId);
@@ -80,6 +81,41 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     case 'widget_settings_reset':
       delete mockWidgetSettings[(args as { widgetId: string }).widgetId];
       return mockSettingsOf((args as { widgetId: string }).widgetId) as T;
+    case 'widgets_install_prepare': {
+      // A link or path with "fail" in it shows the error path.
+      const source = args?.source as { url?: string; path?: string };
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      if ((source.url ?? source.path ?? '').includes('fail')) {
+        throw 'The manifest is invalid: unknown permission "files:write"';
+      }
+      mockPending = {
+        id: 'com.example.clock',
+        name: 'World Clock',
+        version: '1.2.0',
+        author: 'Example',
+        description: 'Time in the cities you choose',
+        entry: 'index.html',
+        width: 240,
+        permissions: ['storage', 'activity'],
+        network: ['https://worldtimeapi.org'],
+        settings: [],
+        source: 'user',
+      };
+      const replaces = mockWidgets.find((w) => w.id === mockPending!.id) as { version?: string } | undefined;
+      return { token: 1, manifest: mockPending, origin: source.url ?? source.path, replaces: replaces?.version ?? null } as T;
+    }
+    case 'widgets_install_confirm': {
+      const index = mockWidgets.findIndex((w) => w.id === mockPending?.id);
+      if (mockPending) mockWidgets.splice(index < 0 ? mockWidgets.length : index, index < 0 ? 0 : 1, mockPending as never);
+      mockPending = null;
+      return mockWidgets as T;
+    }
+    case 'widgets_install_cancel':
+      mockPending = null;
+      return undefined as T;
+    case 'widgets_uninstall':
+      mockWidgets.splice(mockWidgets.findIndex((w) => w.id === (args as { id: string }).id), 1);
+      return mockWidgets as T;
     case 'app_info':
       return { version: 'preview', widgetsDir: null } as T;
     case 'browser_media_status':

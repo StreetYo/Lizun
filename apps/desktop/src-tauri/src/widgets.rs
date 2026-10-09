@@ -21,7 +21,7 @@ pub const SCHEME: &str = "lizun-widget";
 pub const EVENT_CHANGED: &str = "widgets://changed";
 /// Path prefix for files shared by all widgets: the SDK module and the base stylesheet.
 const SDK_PREFIX: &str = "__sdk";
-const MANIFEST_FILE: &str = "manifest.json";
+pub(crate) const MANIFEST_FILE: &str = "manifest.json";
 
 /// Permissions a widget can request. The island refuses SDK calls that need anything else.
 pub const KNOWN_PERMISSIONS: &[&str] = &["media:read", "media:control", "storage", "activity"];
@@ -86,10 +86,14 @@ pub fn widgets_list(app: AppHandle) -> Vec<InstalledWidget> {
     refresh(&app)
 }
 
-/// Rescans the widget folders and tells the island to pick up the changes.
 #[tauri::command]
 pub fn widgets_reload(app: AppHandle) -> Vec<InstalledWidget> {
-    let widgets = refresh(&app);
+    reload(&app)
+}
+
+/// Rescans the widget folders and tells the island to pick up the changes.
+pub fn reload<R: Runtime>(app: &AppHandle<R>) -> Vec<InstalledWidget> {
+    let widgets = refresh(app);
     if let Err(err) = app.emit(EVENT_CHANGED, ()) {
         log::warn!("failed to announce the widget reload: {err}");
     }
@@ -115,6 +119,13 @@ pub fn find<R: Runtime>(app: &AppHandle<R>, id: &str) -> Option<WidgetManifest> 
     let registry = app.state::<Registry>();
     let widgets = registry.widgets.read().unwrap();
     widgets.iter().find(|w| w.manifest.id == id).map(|w| w.manifest.clone())
+}
+
+/// The widget with this id found by the last scan, with its folder and where it comes from.
+pub fn lookup<R: Runtime>(app: &AppHandle<R>, id: &str) -> Option<InstalledWidget> {
+    let registry = app.state::<Registry>();
+    let widgets = registry.widgets.read().unwrap();
+    widgets.iter().find(|w| w.manifest.id == id).cloned()
 }
 
 pub fn user_widgets_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
@@ -181,11 +192,11 @@ fn sdk_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
 }
 
 /// Path inside the source repository; only meaningful for debug builds run from a checkout.
-fn repo_path(relative: &str) -> PathBuf {
+pub(crate) fn repo_path(relative: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..").join(relative)
 }
 
-fn load_manifest(dir: &Path) -> Result<WidgetManifest, String> {
+pub fn load_manifest(dir: &Path) -> Result<WidgetManifest, String> {
     let text = fs::read_to_string(dir.join(MANIFEST_FILE)).map_err(|e| e.to_string())?;
     let manifest: WidgetManifest = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     validate(&manifest)?;

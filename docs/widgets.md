@@ -224,8 +224,54 @@ and `/__sdk/`; inline scripts are blocked. Network requests are limited to `netw
 
 ## Installing
 
-Put the folder in `%APPDATA%\app.lizun.desktop\widgets\` and reopen the island. In development
-builds, widgets in the repository's `widgets/` folder are loaded too.
+In Settings > Widgets > Add a widget:
+
+- paste a GitHub link and press Install;
+- or choose a `.zip` archive or a widget folder on this computer, or drop one on the settings
+  window.
+
+Lizun downloads or copies the widget into a staging folder and checks it there: the manifest
+must pass the rules above and the `entry` page must exist. A widget that fails shows the reason
+and is not installed. One that passes is shown with its author, origin, permissions and network
+access, and is installed only after the user presses Install. Why it works this way is in
+[ADR 0005](adr/0005-installing-widgets.md).
+
+The widget is put in `%APPDATA%\app.lizun.desktop\widgets\<id>\` and appears in the island
+right away. Installing a widget whose id is already installed replaces it (the button says
+Update); its settings and stored data are kept. The trash button next to an installed widget
+removes it, also keeping its settings and data for a later reinstall.
+
+Copying a widget folder into `%APPDATA%\app.lizun.desktop\widgets\` by hand and pressing Reload
+works too, without the checks before installing. In development builds, widgets in the
+repository's `widgets/` folder are loaded as well.
+
+Limits: an archive up to 50 MB, a widget up to 50 MB and 2000 files once unpacked. Symbolic
+links and `.git` folders are skipped.
+
+## Publishing on GitHub
+
+Put the widget in a public GitHub repository. These links install it:
+
+| Link | What is installed |
+|---|---|
+| `https://github.com/you/clock` | The default branch. |
+| `https://github.com/you/clock/tree/v1.2.0` | A branch, tag or commit. |
+| `https://github.com/you/widgets/tree/main/clock` | The `clock` folder, for a repository with several widgets. |
+| `https://github.com/you/clock/releases/tag/v1.2.0` | The source of a release. |
+| `https://github.com/you/clock/releases/download/v1.2.0/clock.zip` | A zip file attached to a release. |
+| `https://github.com/you/clock/releases/latest/download/clock.zip` | That file from the latest release. |
+
+Lizun takes the folder with the `manifest.json` closest to the top of the archive, so the
+manifest can sit at the root of the repository or in a single folder such as `dist/`. When
+several folders at that level have one, it asks for a link to the folder instead. A `/tree/`
+link reads the first segment after `tree` as the branch, so for a branch with a slash in its
+name (`feature/x`) publish a tag or a release instead.
+
+A link to the default branch always installs what is on it right now. To let people install a
+fixed version, publish releases and share the release link, and raise `version` in the
+manifest with each one: Settings shows it, and an update shows which version it replaces.
+
+Widgets from private repositories cannot be installed.
 
 Widgets that ship with Lizun live in `apps/desktop/bundled-widgets/` and are copied into the
 app's resources. They use the same SDK and sandbox as installed widgets and are listed with the

@@ -2,16 +2,22 @@
   import { onMount, tick } from 'svelte';
   import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
   import ArrowClockwise from 'phosphor-svelte/lib/ArrowClockwise';
+  import CircleNotch from 'phosphor-svelte/lib/CircleNotch';
   import DotsSixVertical from 'phosphor-svelte/lib/DotsSixVertical';
+  import FileZip from 'phosphor-svelte/lib/FileZip';
+  import Folder from 'phosphor-svelte/lib/Folder';
   import FolderOpen from 'phosphor-svelte/lib/FolderOpen';
   import GearSix from 'phosphor-svelte/lib/GearSix';
+  import GithubLogo from 'phosphor-svelte/lib/GithubLogo';
   import Info from 'phosphor-svelte/lib/Info';
   import MusicNotes from 'phosphor-svelte/lib/MusicNotes';
   import PuzzlePiece from 'phosphor-svelte/lib/PuzzlePiece';
+  import Trash from 'phosphor-svelte/lib/Trash';
   import { browserMedia } from '../lib/browserMedia.svelte';
-  import { invoke, isTauri } from '../lib/platform';
+  import { invoke, isTauri, onFileDrag } from '../lib/platform';
   import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
   import { Reorder } from '../lib/reorder.svelte';
+  import { WidgetInstaller } from '../lib/widgets/installer.svelte';
   import { BUILT_IN_WIDGETS, moveWidget, setWidgetEnabled, widgetLayout } from '../lib/widgets/layout.svelte';
   import type { SettingSpec, SettingValue, WidgetManifest } from '../lib/widgets/registry.svelte';
   import { widgetSettings } from '../lib/widgets/settings.svelte';
@@ -53,13 +59,31 @@
   let info = $state<{ version: string; widgetsDir: string | null }>({ version: '', widgetsDir: null });
   let error = $state<string | null>(null);
 
-  onMount(async () => {
+  onMount(() => {
     void preferences.start();
     void browserMedia.start();
     void widgetSettings.start();
-    info =(await invoke('app_info')) ?? info;
-    widgets = (await invoke<WidgetManifest[]>('widgets_list')) ?? [];
-    if (isTauri) launchAtLogin = await isEnabled().catch(() => false);
+    void (async () => {
+      info = (await invoke('app_info')) ?? info;
+      widgets = (await invoke<WidgetManifest[]>('widgets_list')) ?? [];
+      if (isTauri) launchAtLogin = await isEnabled().catch(() => false);
+    })();
+    // A zip archive or a folder dropped anywhere on the window is installed as a widget.
+    const stop = onFileDrag({
+      enter: () => (dropping = true),
+      over: () => {},
+      leave: () => (dropping = false),
+      drop: (paths) => {
+        dropping = false;
+        section = 'widgets';
+        if (paths.length === 1) void installer.prepare({ kind: 'path', path: paths[0] });
+        else installer.error = 'Drop one widget at a time.';
+      },
+    });
+    return () => {
+      installer.cancel();
+      void stop.then((unlisten) => unlisten());
+    };
   });
 
   async function toggleLaunchAtLogin(): Promise<void> {
@@ -223,6 +247,35 @@
     }
   }
 
+  const installer = new WidgetInstaller((list) => {
+    widgets = list;
+    void widgetSettings.load();
+  });
+  let link = $state('');
+  let dropping = $state(false);
+  /** Id of the widget whose removal waits for a second click. */
+  let removing = $state<string | null>(null);
+
+  function installFromLink(event: SubmitEvent): void {
+    event.preventDefault();
+    if (link.trim()) void installer.prepare({ kind: 'github', url: link.trim() });
+  }
+
+  async function confirmInstall(): Promise<void> {
+    await installer.confirm();
+    if (installer.done) link = '';
+  }
+
+  async function uninstall(widget: WidgetManifest): Promise<void> {
+    error = null;
+    removing = null;
+    try {
+      widgets = await invoke<WidgetManifest[]>('widgets_uninstall', { id: widget.id });
+    } catch (err) {
+      error = `Could not remove ${widget.name}: ${err}`;
+    }
+  }
+
   function openWidgetsFolder(): void {
     error = null;
     invoke('widgets_open_folder').catch((err) => (error = `Could not open the folder: ${err}`));
@@ -239,6 +292,20 @@
       <button class="link" onclick={() => resetWidgetSettings(widget)}>Reset to defaults</button>
     </div>
   {/if}
+{/snippet}
+
+{#snippet permissionChips(widget: WidgetManifest)}
+  <div class="chips">
+    {#each widget.permissions as permission (permission)}
+      <span class="chip">{PERMISSIONS[permission] ?? permission}</span>
+    {/each}
+    {#each widget.network as origin (origin)}
+      <span class="chip">Network: {origin}</span>
+    {/each}
+    {#if !widget.permissions.length && !widget.network.length}
+      <span class="chip">No permissions</span>
+    {/if}
+  </div>
 {/snippet}
 
 {#snippet settingRow(widget: WidgetManifest, setting: SettingSpec, value: SettingValue)}
@@ -471,6 +538,64 @@
         {/each}
       </div>
 
+      <h2>Add a widget</h2>
+      <div class="card installer">
+        <form class="row" onsubmit={installFromLink}>
+          <span class="source-icon"><GithubLogo size={18} weight="fill" /></span>
+          <input
+            class="text-input link-input"
+            type="text"
+            placeholder="https://github.com/owner/widget"
+            aria-label="Link to a widget on GitHub"
+            spellcheck="false"
+            autocomplete="off"
+            bind:value={link}
+            disabled={installer.busy !== null}
+          />
+          {#if !installer.pending}
+            <button class="primary" type="submit" disabled={installer.busy !== null || !link.trim()}>Install</button>
+          {/if}
+        </form>
+        <div class="row local">
+          <span class="hint">Or from this computer. You can also drop it on this window.</span>
+          <button class="secondary" onclick={() => installer.choose('zip')} disabled={installer.busy !== null}>
+            <FileZip size={15} weight="fill" /> Zip archive…
+          </button>
+          <button class="secondary" onclick={() => installer.choose('folder')} disabled={installer.busy !== null}>
+            <Folder size={15} weight="fill" /> Folder…
+          </button>
+        </div>
+        {#if installer.busy === 'checking'}
+          <div class="row progress">
+            <span class="spin"><CircleNotch size={16} weight="bold" /></span> Getting the widget and checking it…
+          </div>
+        {/if}
+        {#if installer.pending}
+          {@const { manifest, origin, replaces } = installer.pending}
+          <div class="row review">
+            <div class="text">
+              <div class="label">{manifest.name} <span class="version">{manifest.version}</span></div>
+              {#if manifest.description}<div class="hint">{manifest.description}</div>{/if}
+              <div class="hint">{manifest.author ? `By ${manifest.author} · ` : ''}{manifest.id}</div>
+              <div class="hint origin">From {origin}</div>
+              {#if replaces}
+                <div class="hint">Replaces the installed version {replaces}. Its settings and data are kept.</div>
+              {/if}
+              {@render permissionChips(manifest)}
+              <div class="hint">The widget runs in a sandbox and gets only what is listed above.</div>
+            </div>
+          </div>
+          <div class="row review-actions">
+            <button class="secondary" onclick={() => installer.cancel()} disabled={installer.busy !== null}>Cancel</button>
+            <button class="primary" onclick={confirmInstall} disabled={installer.busy !== null}>
+              {replaces ? 'Update' : 'Install'}
+            </button>
+          </div>
+        {/if}
+        {#if installer.error}<div class="row message bad">{installer.error}</div>{/if}
+        {#if installer.done}<div class="row message ok">{installer.done}</div>{/if}
+      </div>
+
       <h2>Installed</h2>
       {#if installedWidgets.length}
         <div class="card">
@@ -479,25 +604,27 @@
               <div class="text">
                 <div class="label">{widget.name} <span class="version">{widget.version}</span></div>
                 <div class="hint">{widget.description || widget.id}</div>
-                <div class="chips">
-                  {#each widget.permissions as permission (permission)}
-                    <span class="chip">{PERMISSIONS[permission] ?? permission}</span>
-                  {/each}
-                  {#each widget.network as origin (origin)}
-                    <span class="chip">Network: {origin}</span>
-                  {/each}
-                  {#if !widget.permissions.length && !widget.network.length}
-                    <span class="chip">No permissions</span>
-                  {/if}
-                </div>
+                {@render permissionChips(widget)}
               </div>
               <span class="badge">{widget.source === 'dev' ? 'Development' : widget.author || 'Installed'}</span>
+              {#if widget.source === 'user'}
+                {#if removing === widget.id}
+                  <span class="confirm">
+                    <button class="link remove" onclick={() => uninstall(widget)}>Remove</button>
+                    <button class="link" onclick={() => (removing = null)}>Keep</button>
+                  </span>
+                {:else}
+                  <button class="icon-button" title="Remove" aria-label="Remove {widget.name}" onclick={() => (removing = widget.id)}>
+                    <Trash size={16} />
+                  </button>
+                {/if}
+              {/if}
             </div>
             {@render widgetSettingRows(widget)}
           {/each}
         </div>
       {:else}
-        <div class="card empty">No widgets installed yet. Put a widget folder into the widgets folder and press Reload.</div>
+        <div class="card empty">No widgets installed yet. Add one with a GitHub link, a zip archive or a folder.</div>
       {/if}
       {#if info.widgetsDir}<p class="path">{info.widgetsDir}</p>{/if}
     {:else if section === 'media'}
@@ -580,6 +707,10 @@
 
     {#if error}<p class="error">{error}</p>{/if}
   </main>
+
+  {#if dropping}
+    <div class="drop"><div>Drop a zip archive or a widget folder to install it</div></div>
+  {/if}
 </div>
 
 <style>
@@ -1016,6 +1147,147 @@
 
   .steps b {
     color: var(--text);
+    font-weight: 600;
+  }
+
+  .installer .row {
+    gap: 10px;
+  }
+
+  .source-icon {
+    display: grid;
+    color: var(--text-secondary);
+  }
+
+  .text-input.link-input {
+    flex: 1;
+    height: 30px;
+    width: auto;
+    min-width: 0;
+    user-select: text;
+  }
+
+  .local .hint {
+    flex: 1;
+    margin: 0;
+  }
+
+  .primary {
+    flex: none;
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .primary:hover {
+    filter: brightness(1.1);
+  }
+
+  .primary:disabled,
+  .secondary:disabled {
+    opacity: 0.45;
+    filter: none;
+  }
+
+  .progress {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .spin {
+    display: grid;
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      rotate: 360deg;
+    }
+  }
+
+  .review,
+  .row.review-actions {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .review .hint + .hint,
+  .review .chips + .hint {
+    margin-top: 4px;
+  }
+
+  .review .chips {
+    margin-bottom: 8px;
+  }
+
+  .origin {
+    user-select: text;
+    word-break: break-all;
+  }
+
+  .row.review-actions {
+    justify-content: flex-end;
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .message {
+    font-size: 12.5px;
+    line-height: 1.4;
+    user-select: text;
+  }
+
+  .message.ok {
+    color: var(--text-secondary);
+  }
+
+  .message.bad {
+    color: var(--danger);
+  }
+
+  .icon-button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    color: var(--text-tertiary);
+  }
+
+  .icon-button:hover {
+    color: var(--danger);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .confirm {
+    flex: none;
+    display: flex;
+    gap: 12px;
+  }
+
+  .link.remove {
+    color: var(--danger);
+  }
+
+  .drop {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    padding: 24px;
+    background: rgba(10, 10, 12, 0.72);
+    pointer-events: none;
+  }
+
+  .drop div {
+    display: grid;
+    place-items: center;
+    border: 2px dashed var(--accent);
+    border-radius: 16px;
+    font-size: 15px;
     font-weight: 600;
   }
 

@@ -20,7 +20,8 @@ list, and widgets anyone can write and install.
   play/pause/next/previous.
 - File tray: drag files from Explorer onto the island, drag them back out into any app.
 - Third-party widgets in a sandbox, with a permission manifest and their own settings (see
-  [docs/widgets.md](docs/widgets.md)).
+  [docs/widgets.md](docs/widgets.md)). Install them in Settings from a GitHub link, a zip
+  archive or a folder: Lizun checks the widget and shows its permissions before installing it.
 - Widgets can be dragged into another order and hidden, right in the island (pencil button) or
   in Settings > Widgets.
 - Settings window (gear in the island or the tray menu): launch at login, how the closed

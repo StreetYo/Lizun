@@ -25,6 +25,9 @@ percent-encoding = "2"
 tungstenite = "0.30"
 tauri-plugin-drag = "2"
 tauri-plugin-autostart = "2"
+ureq = { version = "3", default-features = false, features = ["native-tls"] }
+zip = { version = "8", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tauri-plugin-dialog = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-future = "0.3"
