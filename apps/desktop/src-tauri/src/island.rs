@@ -11,7 +11,7 @@ const EVENT_DEACTIVATED: &str = "island://deactivated";
 
 /// Height of the overlay strip in logical pixels. It must fit the tallest expanded state
 /// together with its drop shadow.
-const STRIP_HEIGHT: f64 = 420.0;
+const STRIP_HEIGHT: f64 = 520.0;
 
 /// Interactive area until the UI reports its own: roughly the collapsed pill.
 const INITIAL_HIT_SIZE: (f64, f64) = (360.0, 40.0);

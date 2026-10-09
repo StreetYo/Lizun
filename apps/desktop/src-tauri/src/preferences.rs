@@ -38,6 +38,8 @@ pub const CLIPBOARD_LIMIT: std::ops::RangeInclusive<u32> = 1..=1_000;
 /// Limits for the widget list, which only ever holds ids the user has seen in the island.
 const MAX_WIDGET_SLOTS: usize = 256;
 const MAX_WIDGET_ID_LEN: usize = 80;
+/// The island shows its widgets in up to this many rows.
+pub const WIDGET_ROWS: u8 = 2;
 
 /// A widget's place in the island and whether it is shown. Built-in widgets use ids such as
 /// `builtin:media`, which an installed widget cannot take.
@@ -46,6 +48,10 @@ const MAX_WIDGET_ID_LEN: usize = 80;
 pub struct WidgetSlot {
     pub id: String,
     pub enabled: bool,
+    /// Row of the island the widget is in, counted from 0; files without it put every widget
+    /// in the first row.
+    #[serde(default)]
+    pub row: u8,
 }
 
 /// Unknown fields are ignored and missing ones take their defaults, so files written by other
@@ -66,9 +72,9 @@ pub struct Preferences {
     pub browser_media: bool,
     /// Port the extension connects to; its popup must show the same one.
     pub browser_media_port: u16,
-    /// Order of the widgets in the island. Widgets missing from the list are shown after the
-    /// listed ones; ids of widgets that are not installed right now are kept, so a widget
-    /// that comes back takes its old place.
+    /// Order of the widgets in the island; each row shows its widgets in this order. Widgets
+    /// missing from the list are shown in the first row after the listed ones; ids of widgets
+    /// that are not installed right now are kept, so a widget that comes back takes its old place.
     pub widgets: Vec<WidgetSlot>,
     /// Keep a history of copied text, pictures and files for the island's Clipboard tab.
     pub clipboard_history: bool,
@@ -122,6 +128,9 @@ impl Preferences {
             !slot.id.is_empty() && slot.id.len() <= MAX_WIDGET_ID_LEN && seen.insert(slot.id.clone())
         });
         self.widgets.truncate(MAX_WIDGET_SLOTS);
+        for slot in &mut self.widgets {
+            slot.row = slot.row.min(WIDGET_ROWS - 1);
+        }
         self
     }
 }
@@ -204,7 +213,7 @@ mod tests {
             open_delay_ms: 400,
             browser_media: false,
             browser_media_port: 7000,
-            widgets: vec![WidgetSlot { id: "builtin:media".into(), enabled: false }],
+            widgets: vec![WidgetSlot { id: "builtin:media".into(), enabled: false, row: 1 }],
             clipboard_history: false,
             clipboard_text: true,
             clipboard_pictures: false,
@@ -215,7 +224,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200}"#
+            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200}"#
         );
     }
 
@@ -254,18 +263,24 @@ mod tests {
 
     #[test]
     fn cleans_up_the_widget_list() {
-        let slot = |id: &str, enabled| WidgetSlot { id: id.into(), enabled };
+        let slot = |id: &str, enabled| WidgetSlot { id: id.into(), enabled, row: 0 };
         let messy = Preferences {
             widgets: vec![
                 slot("builtin:calendar", true),
                 slot("", true),
                 slot("builtin:calendar", false),
                 slot(&"x".repeat(MAX_WIDGET_ID_LEN + 1), true),
-                slot("todo", false),
+                WidgetSlot { row: 7, ..slot("todo", false) },
             ],
             ..Preferences::default()
         };
-        assert_eq!(messy.clamped().widgets, vec![slot("builtin:calendar", true), slot("todo", false)]);
+        assert_eq!(
+            messy.clamped().widgets,
+            vec![slot("builtin:calendar", true), WidgetSlot { row: WIDGET_ROWS - 1, ..slot("todo", false) }]
+        );
+
+        let older: Preferences = serde_json::from_str(r#"{"widgets":[{"id":"todo","enabled":true}]}"#).unwrap();
+        assert_eq!(older.widgets, vec![slot("todo", true)]);
 
         let many = Preferences {
             widgets: (0..MAX_WIDGET_SLOTS + 10).map(|i| slot(&format!("widget-{i}"), true)).collect(),

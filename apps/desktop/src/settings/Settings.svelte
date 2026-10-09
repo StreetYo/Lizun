@@ -19,10 +19,17 @@
   import { clipboardHistory } from '../lib/clipboard.svelte';
   import { i18n, LANGUAGES, t, tSplit, type MessageKey } from '../lib/i18n.svelte';
   import { invoke, isTauri, onFileDrag } from '../lib/platform';
-  import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
+  import { preferences, WIDGET_ROWS, type IslandVisibility } from '../lib/preferences.svelte';
   import { Reorder } from '../lib/reorder.svelte';
   import { WidgetInstaller } from '../lib/widgets/installer.svelte';
-  import { BUILT_IN_WIDGETS, builtInTexts, moveWidget, setWidgetEnabled, widgetLayout } from '../lib/widgets/layout.svelte';
+  import {
+    arrangeWidgets,
+    BUILT_IN_WIDGETS,
+    builtInTexts,
+    setWidgetEnabled,
+    widgetLayout,
+    type LayoutEntry,
+  } from '../lib/widgets/layout.svelte';
   import { localized, type SettingSpec, type SettingValue, type WidgetManifest } from '../lib/widgets/registry.svelte';
   import { widgetSettings, type SettingsOwner } from '../lib/widgets/settings.svelte';
 
@@ -299,6 +306,14 @@
   }
 
   const layout = $derived(widgetLayout(widgets, preferences.value.widgets));
+  /** The widgets row by row, with a heading in front of every row after the first: a widget
+   * dragged past a heading goes into that row. */
+  const layoutItems = $derived(
+    Array.from({ length: WIDGET_ROWS }, (_, row) => [
+      ...(row ? [{ heading: row }] : []),
+      ...layout.filter((entry) => entry.row === row),
+    ]).flat(),
+  );
   let layoutList = $state<HTMLElement>();
   const reorder = new Reorder('y', 0, (from, to) => void moveLayout(from, to));
 
@@ -308,8 +323,15 @@
 
   async function moveLayout(from: number, to: number, refocus = false): Promise<void> {
     error = null;
+    const items = [...layoutItems];
+    items.splice(to, 0, ...items.splice(from, 1));
+    const rows: LayoutEntry[][] = [[]];
+    for (const item of items) {
+      if ('heading' in item) rows.push([]);
+      else rows[rows.length - 1].push(item);
+    }
     try {
-      await moveWidget(layout, from, to);
+      await arrangeWidgets(rows);
     } catch (err) {
       error = t('settings.errors.saveOrder', { error: String(err) });
     }
@@ -324,7 +346,7 @@
     const to = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : null;
     if (to === null) return;
     event.preventDefault();
-    if (to >= 0 && to < layout.length) void moveLayout(index, to, true);
+    if (to >= 0 && to < layoutItems.length) void moveLayout(index, to, true);
   }
 
   async function toggleWidget(id: string, enabled: boolean): Promise<void> {
@@ -598,36 +620,46 @@
 
       <h2>{t('settings.widgets.inIsland')}</h2>
       <div class="card" class:instant={reorder.instant} bind:this={layoutList}>
-        {#each layout as entry, index (entry.id)}
-          <div
-            class="row layout-row"
-            class:dragged={reorder.dragging === index}
-            class:off={!entry.enabled}
-            style:translate="0 {reorder.offset(index)}px"
-          >
-            <button
-              class="grip"
-              aria-label={t('settings.widgets.moveHint', { name: entry.name })}
-              title={t('settings.widgets.dragToReorder')}
-              onpointerdown={(event) => reorder.start(event, index, layoutRows())}
-              onpointermove={(event) => reorder.move(event)}
-              onpointerup={(event) => reorder.end(event)}
-              onpointercancel={(event) => reorder.end(event)}
-              onkeydown={(event) => layoutKey(event, index)}
-            ><DotsSixVertical size={18} weight="bold" /></button>
-            <div class="text">
-              <div class="label">{entry.name}</div>
-              <div class="hint">{entry.description}</div>
+        {#each layoutItems as item, index ('heading' in item ? `row-${item.heading}` : item.id)}
+          {#if 'heading' in item}
+            <div class="row layout-row heading" style:translate="0 {reorder.offset(index)}px">
+              <div class="text">
+                <div class="label">{t('settings.widgets.rowHeading', { number: item.heading + 1 })}</div>
+                <div class="hint">{t('settings.widgets.rowHeadingHint')}</div>
+              </div>
             </div>
-            <button
-              class="switch"
-              class:on={entry.enabled}
-              role="switch"
-              aria-checked={entry.enabled}
-              aria-label={t('settings.widgets.show', { name: entry.name })}
-              onclick={() => toggleWidget(entry.id, !entry.enabled)}
-            ><span></span></button>
-          </div>
+          {:else}
+            {@const entry = item}
+            <div
+              class="row layout-row"
+              class:dragged={reorder.dragging === index}
+              class:off={!entry.enabled}
+              style:translate="0 {reorder.offset(index)}px"
+            >
+              <button
+                class="grip"
+                aria-label={t('settings.widgets.moveHint', { name: entry.name })}
+                title={t('settings.widgets.dragToReorder')}
+                onpointerdown={(event) => reorder.start(event, index, layoutRows())}
+                onpointermove={(event) => reorder.move(event)}
+                onpointerup={(event) => reorder.end(event)}
+                onpointercancel={(event) => reorder.end(event)}
+                onkeydown={(event) => layoutKey(event, index)}
+              ><DotsSixVertical size={18} weight="bold" /></button>
+              <div class="text">
+                <div class="label">{entry.name}</div>
+                <div class="hint">{entry.description}</div>
+              </div>
+              <button
+                class="switch"
+                class:on={entry.enabled}
+                role="switch"
+                aria-checked={entry.enabled}
+                aria-label={t('settings.widgets.show', { name: entry.name })}
+                onclick={() => toggleWidget(entry.id, !entry.enabled)}
+              ><span></span></button>
+            </div>
+          {/if}
         {/each}
       </div>
       <p class="note">{t('settings.widgets.orderNote')}</p>
@@ -1306,6 +1338,20 @@
   }
 
   .layout-row.off .label {
+    color: var(--text-secondary);
+  }
+
+  /* Lines up with the widget names, which follow the grip. */
+  .layout-row.heading {
+    padding-top: 9px;
+    padding-bottom: 9px;
+    padding-left: 42px;
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .layout-row.heading .label {
+    font-size: 12px;
+    font-weight: 600;
     color: var(--text-secondary);
   }
 

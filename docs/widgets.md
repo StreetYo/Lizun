@@ -241,8 +241,8 @@ Keep the ends meaningful on their own.
 How it is shown:
 
 - The mini island shows one thing at a time: the current track first, then files in the tray,
-  then widget activities in the order the widgets have in the island. The user sets the
-  priority by moving widgets, and a hidden widget shows nothing.
+  then widget activities in the order the widgets have in the island (the first row, then the
+  second). The user sets the priority by moving widgets, and a hidden widget shows nothing.
 - When nothing has an activity, the mini island goes into the top edge; pointing at the edge
   still opens the island.
 - In "Hide after a delay" mode the mini island comes out when a widget's activity appears, not

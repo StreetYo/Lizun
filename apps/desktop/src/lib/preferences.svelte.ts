@@ -7,7 +7,12 @@ export type IslandVisibility = 'always' | 'autoHide' | 'hidden';
 export interface WidgetSlot {
   id: string;
   enabled: boolean;
+  /** Row of the island, counted from 0 (below `WIDGET_ROWS`). */
+  row: number;
 }
+
+/** The island shows its widgets in up to this many rows (see src-tauri/src/preferences.rs). */
+export const WIDGET_ROWS = 2;
 
 export interface Preferences {
   /** Interface language: a code such as `ru`, or `system` to follow Windows (see i18n.svelte.ts). */
