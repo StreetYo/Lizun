@@ -30,7 +30,7 @@
     "dropInRow": "Перетащите сюда виджет",
     "clipboard": "Буфер",
     "clearClipboard": "Очистить историю буфера",
-    "clearClipboardConfirm": "Нажмите ещё раз, чтобы очистить историю буфера"
+    "clearClipboardAsk": "Очистить всё?"
   },
   "builtIn": {
     "media": {

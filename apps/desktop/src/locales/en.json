@@ -28,7 +28,7 @@
     "dropInRow": "Drag a widget here",
     "clipboard": "Clipboard",
     "clearClipboard": "Clear clipboard history",
-    "clearClipboardConfirm": "Click again to clear the clipboard history"
+    "clearClipboardAsk": "Clear all?"
   },
   "builtIn": {
     "media": {

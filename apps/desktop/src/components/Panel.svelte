@@ -21,9 +21,15 @@
   let widgetsWidth = $state(0);
   let editing = $state(false);
 
-  /** Clearing the clipboard history takes a second click within a few seconds. */
+  /** Clearing the clipboard history takes a second click: the first turns the trash button into
+   * a red "Clear all?" button, which goes back after a few seconds or when the cursor leaves. */
   let clearArmed = $state(false);
   let clearTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function disarmClear(): void {
+    clearTimeout(clearTimer);
+    clearArmed = false;
+  }
 
   function clearHistory(): void {
     clearTimeout(clearTimer);
@@ -40,8 +46,12 @@
   $effect(() => {
     if (!ui.expanded) {
       editing = false;
-      clearArmed = false;
+      disarmClear();
     }
+  });
+
+  $effect(() => {
+    if (tab !== 'clipboard') disarmClear();
   });
 
   // The Clipboard tab goes away when the history is turned off.
@@ -75,14 +85,15 @@
             <PencilSimple size={16} weight="fill" />
           </button>
         {:else if tab === 'clipboard' && clipboardHistory.entries.length}
-          <button
-            class="tool"
-            class:armed={clearArmed}
-            title={clearArmed ? t('island.clearClipboardConfirm') : t('island.clearClipboard')}
-            onclick={clearHistory}
-          >
-            <Trash size={16} weight="fill" />
-          </button>
+          {#if clearArmed}
+            <button class="confirm-clear" onclick={clearHistory} onpointerleave={disarmClear}>
+              <Trash size={14} weight="fill" /> {t('island.clearClipboardAsk')}
+            </button>
+          {:else}
+            <button class="tool" title={t('island.clearClipboard')} onclick={clearHistory}>
+              <Trash size={16} weight="fill" />
+            </button>
+          {/if}
         {/if}
         <button
           class="tool"
@@ -183,9 +194,29 @@
     background: var(--card);
   }
 
-  .tool.armed,
-  .tool.armed:hover {
-    color: white;
+  .confirm-clear {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 11px 0 9px;
+    border-radius: 13px;
     background: var(--danger);
+    color: white;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    animation: confirm-in 160ms ease;
+  }
+
+  .confirm-clear:hover {
+    filter: brightness(1.1);
+  }
+
+  @keyframes confirm-in {
+    from {
+      opacity: 0;
+      scale: 0.9;
+    }
   }
 </style>
