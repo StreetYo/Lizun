@@ -1,24 +1,52 @@
 <script lang="ts">
+  import ClipboardText from 'phosphor-svelte/lib/ClipboardText';
   import GearSix from 'phosphor-svelte/lib/GearSix';
   import PencilSimple from 'phosphor-svelte/lib/PencilSimple';
   import SquaresFour from 'phosphor-svelte/lib/SquaresFour';
+  import Trash from 'phosphor-svelte/lib/Trash';
   import Tray from 'phosphor-svelte/lib/Tray';
+  import { clipboardHistory } from '../lib/clipboard.svelte';
   import { t } from '../lib/i18n.svelte';
   import { invoke } from '../lib/platform';
-  import { ui } from '../lib/ui.svelte';
+  import { preferences } from '../lib/preferences.svelte';
+  import { ui, type PanelTab } from '../lib/ui.svelte';
+  import ClipboardView from './ClipboardView.svelte';
   import TrayView from './TrayView.svelte';
   import WidgetsView from './WidgetsView.svelte';
 
-  let { tab = $bindable('widgets') }: { tab: 'widgets' | 'tray' } = $props();
+  let { tab = $bindable('widgets') }: { tab: PanelTab } = $props();
 
   // The tray takes the width of the widget row, so switching tabs does not shrink the island
   // out from under the cursor.
   let widgetsWidth = $state(0);
   let editing = $state(false);
 
+  /** Clearing the clipboard history takes a second click within a few seconds. */
+  let clearArmed = $state(false);
+  let clearTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function clearHistory(): void {
+    clearTimeout(clearTimer);
+    if (clearArmed) {
+      clearArmed = false;
+      clipboardHistory.clear();
+      return;
+    }
+    clearArmed = true;
+    clearTimer = setTimeout(() => (clearArmed = false), 3000);
+  }
+
   // Editing ends when the island closes.
   $effect(() => {
-    if (!ui.expanded) editing = false;
+    if (!ui.expanded) {
+      editing = false;
+      clearArmed = false;
+    }
+  });
+
+  // The Clipboard tab goes away when the history is turned off.
+  $effect(() => {
+    if (tab === 'clipboard' && !preferences.value.clipboardHistory) tab = 'widgets';
   });
 </script>
 
@@ -35,11 +63,25 @@
         <button class:active={tab === 'tray'} onclick={() => (tab = 'tray')}>
           <Tray size={14} weight="fill" /> {t('island.tray')}
         </button>
+        {#if preferences.value.clipboardHistory}
+          <button class:active={tab === 'clipboard'} onclick={() => (tab = 'clipboard')}>
+            <ClipboardText size={14} weight="fill" /> {t('island.clipboard')}
+          </button>
+        {/if}
       </div>
       <div class="tools">
         {#if tab === 'widgets'}
           <button class="tool" title={t('island.editWidgets')} onclick={() => (editing = true)}>
             <PencilSimple size={16} weight="fill" />
+          </button>
+        {:else if tab === 'clipboard' && clipboardHistory.entries.length}
+          <button
+            class="tool"
+            class:armed={clearArmed}
+            title={clearArmed ? t('island.clearClipboardConfirm') : t('island.clearClipboard')}
+            onclick={clearHistory}
+          >
+            <Trash size={16} weight="fill" />
           </button>
         {/if}
         <button
@@ -54,6 +96,8 @@
   </header>
   {#if tab === 'widgets'}
     <div bind:clientWidth={widgetsWidth}><WidgetsView {editing} /></div>
+  {:else if tab === 'clipboard'}
+    <ClipboardView width={widgetsWidth} />
   {:else}
     <TrayView width={widgetsWidth} />
   {/if}
@@ -137,5 +181,11 @@
   .tool:hover {
     color: var(--text);
     background: var(--card);
+  }
+
+  .tool.armed,
+  .tool.armed:hover {
+    color: white;
+    background: var(--danger);
   }
 </style>

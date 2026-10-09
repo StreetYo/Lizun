@@ -2174,6 +2174,7 @@ dependencies = [
  "chrono-tz",
  "log",
  "percent-encoding",
+ "png 0.18.1",
  "rrule",
  "serde",
  "serde_json",

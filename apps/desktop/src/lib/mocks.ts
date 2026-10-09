@@ -27,7 +27,44 @@ let mockPreferences: unknown = {
   browserMedia: true,
   browserMediaPort: 6869,
   widgets: [],
+  clipboardHistory: true,
+  clipboardLifetimeHours: 24,
+  clipboardLimitEnabled: true,
+  clipboardLimit: 50,
 };
+
+/** Clipboard history for the preview: texts of several lengths and a picture with no file. */
+let mockClipboard = [
+  {
+    id: 6,
+    copiedAt: startedAt - 5_000,
+    kind: 'files',
+    files: [
+      { path: 'C:\\Users\\you\\Pictures\\beach.jpg', folder: false, missing: false },
+      { path: 'C:\\Users\\you\\Documents\\report.pdf', folder: false, missing: false },
+      { path: 'C:\\Users\\you\\Projects', folder: true, missing: false },
+      { path: 'C:\\Users\\you\\notes.txt', folder: false, missing: false },
+    ],
+    count: 7,
+  },
+  {
+    id: 5,
+    copiedAt: startedAt - 60_000,
+    kind: 'files',
+    files: [{ path: 'C:\\Users\\you\\Downloads\\setup.exe', folder: false, missing: false }],
+    count: 1,
+  },
+  { id: 4, copiedAt: startedAt - 20_000, kind: 'text', text: 'npm run build -- --watch', cut: false },
+  { id: 3, copiedAt: startedAt - 7 * 60_000, kind: 'picture', path: '', width: 1920, height: 1080 },
+  {
+    id: 2,
+    copiedAt: startedAt - 3 * 3_600_000,
+    kind: 'text',
+    text: 'Hi Alex,\n\nThanks for the notes from yesterday. I went through the design review comments and updated the mockups; the new version is in the shared folder.',
+    cut: true,
+  },
+  { id: 1, copiedAt: startedAt - 26 * 3_600_000, kind: 'text', text: 'https://github.com/lizun-app/lizun', cut: false },
+];
 
 /** Widgets the preview lists; empty, but a test can push manifests into it. */
 export const mockWidgets: { id: string; settings: { key: string; default: unknown }[] }[] = [];
@@ -153,6 +190,16 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return mockWidgets as T;
     case 'app_info':
       return { version: 'preview', widgetsDir: null } as T;
+    case 'clipboard_history':
+      return mockClipboard as T;
+    case 'clipboard_copy':
+      return undefined as T;
+    case 'clipboard_remove':
+      mockClipboard = mockClipboard.filter((entry) => entry.id !== (args as { id: number }).id);
+      return undefined as T;
+    case 'clipboard_clear':
+      mockClipboard = [];
+      return undefined as T;
     case 'browser_media_status':
       return { enabled: true, port: 6869, listening: true, error: null, browsers: [] } as T;
     default:

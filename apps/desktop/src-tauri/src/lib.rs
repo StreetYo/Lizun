@@ -1,4 +1,5 @@
 mod calendar;
+mod clipboard;
 mod file_tray;
 mod http;
 mod i18n;
@@ -42,6 +43,10 @@ pub fn run() {
             media::media_select,
             browser::browser_media_status,
             calendar::calendar_snapshot,
+            clipboard::clipboard_history,
+            clipboard::clipboard_copy,
+            clipboard::clipboard_remove,
+            clipboard::clipboard_clear,
             file_tray::file_tray_allow,
             widgets::widgets_list,
             widgets::widgets_reload,
@@ -68,6 +73,7 @@ pub fn run() {
             widget_install::init(app.handle());
             widget_settings::init(app.handle());
             calendar::start(app.handle());
+            clipboard::start(app.handle());
             island::setup(app)?;
             system_tray::setup(app)?;
             media::start(app.handle());

@@ -44,7 +44,7 @@ class FileTray {
     const fresh = paths.filter((path) => !this.files.some((file) => file.path === path));
     if (!fresh.length) return;
     await invoke('file_tray_allow', { paths: fresh });
-    this.files = [...this.files, ...fresh.map(describe)];
+    this.files = [...this.files, ...fresh.map(describeFile)];
     this.#save();
   }
 
@@ -98,7 +98,8 @@ async function dragIcon(file: TrayFile): Promise<string> {
   return canvas.toDataURL('image/png');
 }
 
-function describe(path: string): TrayFile {
+/** Name, extension and, for pictures, the preview URL of a file the backend has allowed. */
+export function describeFile(path: string): TrayFile {
   const name = path.split(/[\\/]/).pop() || path;
   const dot = name.lastIndexOf('.');
   const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';

@@ -31,6 +31,10 @@ pub const AUTO_HIDE_DELAY_MS: std::ops::RangeInclusive<u32> = 200..=10_000;
 pub const OPEN_DELAY_MS: std::ops::RangeInclusive<u32> = 0..=2_000;
 /// Ports below 1024 are for system services.
 pub const BROWSER_MEDIA_PORTS: std::ops::RangeInclusive<u16> = 1024..=65_535;
+/// Allowed range for how long clipboard history entries stay, in hours; 0 keeps them for good.
+pub const CLIPBOARD_LIFETIME_HOURS: std::ops::RangeInclusive<u32> = 0..=8_760;
+/// Allowed range for the number of clipboard history entries, when it is limited.
+pub const CLIPBOARD_LIMIT: std::ops::RangeInclusive<u32> = 1..=1_000;
 /// Limits for the widget list, which only ever holds ids the user has seen in the island.
 const MAX_WIDGET_SLOTS: usize = 256;
 const MAX_WIDGET_ID_LEN: usize = 80;
@@ -66,6 +70,13 @@ pub struct Preferences {
     /// listed ones; ids of widgets that are not installed right now are kept, so a widget
     /// that comes back takes its old place.
     pub widgets: Vec<WidgetSlot>,
+    /// Keep a history of copied text and pictures for the island's Clipboard tab.
+    pub clipboard_history: bool,
+    /// How long history entries stay, in hours; 0 keeps them until the limit pushes them out.
+    pub clipboard_lifetime_hours: u32,
+    /// Whether the history keeps at most `clipboard_limit` entries.
+    pub clipboard_limit_enabled: bool,
+    pub clipboard_limit: u32,
 }
 
 impl Default for Preferences {
@@ -79,6 +90,10 @@ impl Default for Preferences {
             browser_media: true,
             browser_media_port: crate::browser::DEFAULT_PORT,
             widgets: Vec::new(),
+            clipboard_history: true,
+            clipboard_lifetime_hours: 24,
+            clipboard_limit_enabled: true,
+            clipboard_limit: 50,
         }
     }
 }
@@ -93,6 +108,8 @@ impl Preferences {
         self.open_delay_ms = self.open_delay_ms.clamp(*OPEN_DELAY_MS.start(), *OPEN_DELAY_MS.end());
         self.browser_media_port =
             self.browser_media_port.clamp(*BROWSER_MEDIA_PORTS.start(), *BROWSER_MEDIA_PORTS.end());
+        self.clipboard_lifetime_hours = self.clipboard_lifetime_hours.min(*CLIPBOARD_LIFETIME_HOURS.end());
+        self.clipboard_limit = self.clipboard_limit.clamp(*CLIPBOARD_LIMIT.start(), *CLIPBOARD_LIMIT.end());
         let mut seen = std::collections::HashSet::new();
         self.widgets.retain(|slot| {
             !slot.id.is_empty() && slot.id.len() <= MAX_WIDGET_ID_LEN && seen.insert(slot.id.clone())
@@ -146,6 +163,7 @@ pub fn preferences_set(
     *store.0.lock().unwrap() = preferences.clone();
     crate::browser::configure(&app, preferences.browser_media, preferences.browser_media_port);
     crate::i18n::apply(&app, &preferences.language);
+    crate::clipboard::configure(&app, &preferences);
     if let Err(err) = app.emit(EVENT_CHANGED, &preferences) {
         log::warn!("failed to announce the new preferences: {err}");
     }
@@ -180,10 +198,14 @@ mod tests {
             browser_media: false,
             browser_media_port: 7000,
             widgets: vec![WidgetSlot { id: "builtin:media".into(), enabled: false }],
+            clipboard_history: false,
+            clipboard_lifetime_hours: 0,
+            clipboard_limit_enabled: false,
+            clipboard_limit: 200,
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}]}"#
+            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false}],"clipboardHistory":false,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200}"#
         );
     }
 
@@ -208,6 +230,15 @@ mod tests {
     fn keeps_the_browser_media_port_out_of_system_ports() {
         let system_port = Preferences { browser_media_port: 80, ..Preferences::default() };
         assert_eq!(system_port.clamped().browser_media_port, 1024);
+    }
+
+    #[test]
+    fn keeps_the_clipboard_history_settings_in_range() {
+        let empty: Preferences = serde_json::from_str("{}").unwrap();
+        assert!(empty.clipboard_history && empty.clipboard_limit_enabled);
+        assert_eq!((empty.clipboard_lifetime_hours, empty.clipboard_limit), (24, 50));
+        let wild = Preferences { clipboard_lifetime_hours: 100_000, clipboard_limit: 0, ..Preferences::default() }.clamped();
+        assert_eq!((wild.clipboard_lifetime_hours, wild.clipboard_limit), (8_760, 1));
     }
 
     #[test]

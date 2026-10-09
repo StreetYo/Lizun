@@ -2,6 +2,7 @@
 
 use tauri::WebviewWindow;
 
+use crate::clipboard::{Clip, Picture};
 use crate::island::Rect;
 use crate::media::{MediaCommand, Player};
 
@@ -53,4 +54,24 @@ pub fn current_time_zone() -> Option<String> {
 
 pub fn preferred_languages() -> Vec<String> {
     Vec::new()
+}
+
+pub fn clipboard_sequence() -> u32 {
+    0
+}
+
+pub fn read_clipboard() -> Result<Option<Clip>, ()> {
+    Ok(None)
+}
+
+pub fn write_clipboard_text(_owner: &WebviewWindow, _text: &str) -> Result<(), String> {
+    Err("the clipboard is not supported on this platform yet".into())
+}
+
+pub fn write_clipboard_files(_owner: &WebviewWindow, _paths: &[String]) -> Result<(), String> {
+    Err("the clipboard is not supported on this platform yet".into())
+}
+
+pub fn write_clipboard_picture(_owner: &WebviewWindow, _picture: &Picture, _png: &[u8]) -> Result<(), String> {
+    Err("the clipboard is not supported on this platform yet".into())
 }

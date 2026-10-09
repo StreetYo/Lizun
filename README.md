@@ -21,6 +21,9 @@ list, and widgets anyone can write and install.
 - Now playing for any app in the Windows media flyout (Spotify, browsers, Telegram, ...), with
   play/pause/next/previous.
 - File tray: drag files from Explorer onto the island, drag them back out into any app.
+- Clipboard history: text, pictures and files you copy, in the island's Clipboard tab; click
+  one to copy it again. How long entries stay and how many are kept (or no limit) are set in
+  Settings > Clipboard; passwords that apps mark as private are never saved.
 - Third-party widgets in a sandbox, with a permission manifest and their own settings (see
   [docs/widgets.md](docs/widgets.md)). Install them in Settings from a GitHub link, a zip
   archive or a folder: Lizun checks the widget and shows its permissions before installing it.

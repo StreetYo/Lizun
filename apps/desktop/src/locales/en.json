@@ -24,7 +24,10 @@
     "hideWidget": "Hide {name}",
     "allHidden": "All widgets are hidden",
     "allHiddenEditing": "All widgets are hidden. Add them back below.",
-    "editNote": "Drag a widget to move it. Hidden widgets appear here."
+    "editNote": "Drag a widget to move it. Hidden widgets appear here.",
+    "clipboard": "Clipboard",
+    "clearClipboard": "Clear clipboard history",
+    "clearClipboardConfirm": "Click again to clear the clipboard history"
   },
   "builtIn": {
     "media": {
@@ -119,12 +122,27 @@
       "unreachable": "Could not reach the calendar. Lizun will try again in a few minutes."
     }
   },
+  "clipboard": {
+    "empty": "Copy text, a picture or files and they show up here",
+    "copy": "Copy again",
+    "copied": "Copied",
+    "failed": "Could not copy",
+    "remove": "Remove from history",
+    "justNow": "Just now",
+    "minutesAgo": "{count} min ago",
+    "hoursAgo": "{count} h ago",
+    "daysAgo": "{count} d ago",
+    "files_one": "{count} file",
+    "files_other": "{count} files",
+    "filesGone": "These files were moved or deleted"
+  },
   "settings": {
     "windowTitle": "Lizun Settings",
     "nav": {
       "general": "General",
       "media": "Media",
       "widgets": "Widgets",
+      "clipboard": "Clipboard",
       "about": "About"
     },
     "seconds": "s",
@@ -136,7 +154,8 @@
       "reset": "Could not reset the settings: {error}",
       "remove": "Could not remove {name}: {error}",
       "openFolder": "Could not open the folder: {error}",
-      "port": "The port must be a number from {min} to {max}."
+      "port": "The port must be a number from {min} to {max}.",
+      "limit": "The limit must be a number from {min} to {max}."
     },
     "general": {
       "title": "General",
@@ -227,6 +246,32 @@
       "installExtension": "Install the {name} browser extension for Chrome, Yandex Browser, Edge, Opera or Firefox.",
       "reloadTabs": "Reload the tabs that were open before the extension was installed.",
       "samePort": "If you changed the port, enter {port} in the extension's popup as well."
+    },
+    "clipboard": {
+      "title": "Clipboard",
+      "intro": "Lizun keeps the text, pictures and files you copy in the Clipboard tab of the island; click an entry there to copy it again. Files are kept as links to where they are. The history stays on this computer.",
+      "history": "Clipboard history",
+      "historyHint": "Turning it off deletes the saved history.",
+      "keep": "Keep entries for",
+      "keepHint": "Older entries are deleted.",
+      "hour": "1 hour",
+      "day": "1 day",
+      "week": "1 week",
+      "month": "30 days",
+      "forever": "Forever",
+      "hours": "{count} h",
+      "limit": "Limit the number of entries",
+      "limitHint": "When the history is full, the oldest entry is deleted.",
+      "maxEntries": "Most entries",
+      "maxEntriesHint": "From {min} to {max}.",
+      "saved": "Saved now",
+      "entries_one": "{count} entry",
+      "entries_other": "{count} entries",
+      "clear": "Clear history",
+      "clearConfirm": "Delete every entry?",
+      "delete": "Delete",
+      "keepIt": "Keep",
+      "private": "Passwords and other text that apps mark as private, such as copies from password managers, are never saved. Texts over 1 MB are skipped."
     },
     "about": {
       "title": "About",

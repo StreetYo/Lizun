@@ -25,6 +25,14 @@ export interface Preferences {
   browserMediaPort: number;
   /** Order of the widgets in the island and which of them are shown (see lib/widgets/layout.svelte.ts). */
   widgets: WidgetSlot[];
+  /** Keep a history of copied text and pictures for the island's Clipboard tab. */
+  clipboardHistory: boolean;
+  /** How long history entries stay, in hours (0–8760); 0 keeps them until the limit pushes them out. */
+  clipboardLifetimeHours: number;
+  /** Whether the history keeps at most `clipboardLimit` entries. */
+  clipboardLimitEnabled: boolean;
+  /** Most entries the history keeps when it is limited (1–1000). */
+  clipboardLimit: number;
 }
 
 const DEFAULTS: Preferences = {
@@ -36,6 +44,10 @@ const DEFAULTS: Preferences = {
   browserMedia: true,
   browserMediaPort: 6869,
   widgets: [],
+  clipboardHistory: true,
+  clipboardLifetimeHours: 24,
+  clipboardLimitEnabled: true,
+  clipboardLimit: 50,
 };
 
 /** Preferences shared by all windows; changes made anywhere arrive through an event. */

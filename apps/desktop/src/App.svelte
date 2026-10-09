@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Island from './components/Island.svelte';
   import { calendar } from './lib/calendar.svelte';
+  import { clipboardHistory } from './lib/clipboard.svelte';
   import { fileTray } from './lib/fileTray.svelte';
   import { keyboard } from './lib/keyboard.svelte';
   import { isTauri, listen } from './lib/platform';
@@ -16,6 +17,7 @@
     void media.start();
     void calendar.start();
     void fileTray.restore();
+    void clipboardHistory.start();
     void widgetRegistry.load();
     void widgetSettings.start();
     void keyboard.start();

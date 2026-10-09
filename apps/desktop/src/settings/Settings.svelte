@@ -4,6 +4,7 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import ArrowClockwise from 'phosphor-svelte/lib/ArrowClockwise';
   import CircleNotch from 'phosphor-svelte/lib/CircleNotch';
+  import ClipboardText from 'phosphor-svelte/lib/ClipboardText';
   import DotsSixVertical from 'phosphor-svelte/lib/DotsSixVertical';
   import FileZip from 'phosphor-svelte/lib/FileZip';
   import Folder from 'phosphor-svelte/lib/Folder';
@@ -15,6 +16,7 @@
   import PuzzlePiece from 'phosphor-svelte/lib/PuzzlePiece';
   import Trash from 'phosphor-svelte/lib/Trash';
   import { browserMedia } from '../lib/browserMedia.svelte';
+  import { clipboardHistory } from '../lib/clipboard.svelte';
   import { i18n, LANGUAGES, t, tSplit, type MessageKey } from '../lib/i18n.svelte';
   import { invoke, isTauri, onFileDrag } from '../lib/platform';
   import { preferences, type IslandVisibility } from '../lib/preferences.svelte';
@@ -24,7 +26,7 @@
   import { localized, type SettingSpec, type SettingValue, type WidgetManifest } from '../lib/widgets/registry.svelte';
   import { widgetSettings, type SettingsOwner } from '../lib/widgets/settings.svelte';
 
-  type Section = 'general' | 'media' | 'widgets' | 'about';
+  type Section = 'general' | 'media' | 'widgets' | 'clipboard' | 'about';
 
   const VISIBILITY: IslandVisibility[] = ['always', 'autoHide', 'hidden'];
 
@@ -55,6 +57,7 @@
   onMount(() => {
     void preferences.start();
     void browserMedia.start();
+    void clipboardHistory.start();
     void widgetSettings.start();
     void (async () => {
       info = (await invoke('app_info')) ?? info;
@@ -150,7 +153,9 @@
   /** Allowed port range; it matches src-tauri/src/preferences.rs. */
   const PORTS = { min: 1024, max: 65535 };
 
-  async function toggle(key: 'browserMedia' | 'showOnMediaChange'): Promise<void> {
+  async function toggle(
+    key: 'browserMedia' | 'showOnMediaChange' | 'clipboardHistory' | 'clipboardLimitEnabled',
+  ): Promise<void> {
     error = null;
     try {
       await preferences.update({ [key]: !preferences.value[key] });
@@ -170,6 +175,44 @@
     error = null;
     try {
       await preferences.update({ browserMediaPort: port });
+    } catch (err) {
+      error = t('settings.errors.save', { error: String(err) });
+    }
+  }
+
+  /** Lifetimes offered for the clipboard history, in hours; 0 keeps entries for good. They
+   * fit the range in src-tauri/src/preferences.rs. */
+  const LIFETIMES = [
+    { hours: 1, label: 'hour' },
+    { hours: 24, label: 'day' },
+    { hours: 168, label: 'week' },
+    { hours: 720, label: 'month' },
+    { hours: 0, label: 'forever' },
+  ] as const;
+  /** Allowed limit range; it matches src-tauri/src/preferences.rs. */
+  const CLIPBOARD_LIMIT = { min: 1, max: 1000 };
+  let confirmClear = $state(false);
+
+  async function setLifetime(hours: number): Promise<void> {
+    error = null;
+    try {
+      await preferences.update({ clipboardLifetimeHours: hours });
+    } catch (err) {
+      error = t('settings.errors.save', { error: String(err) });
+    }
+  }
+
+  async function setLimit(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const limit = Number.parseInt(input.value, 10);
+    if (!Number.isInteger(limit) || limit < CLIPBOARD_LIMIT.min || limit > CLIPBOARD_LIMIT.max) {
+      input.value = String(preferences.value.clipboardLimit);
+      error = t('settings.errors.limit', CLIPBOARD_LIMIT);
+      return;
+    }
+    error = null;
+    try {
+      await preferences.update({ clipboardLimit: limit });
     } catch (err) {
       error = t('settings.errors.save', { error: String(err) });
     }
@@ -415,6 +458,9 @@
     </button>
     <button class:active={section === 'widgets'} onclick={() => (section = 'widgets')}>
       <PuzzlePiece size={16} weight="fill" /> {t('settings.nav.widgets')}
+    </button>
+    <button class:active={section === 'clipboard'} onclick={() => (section = 'clipboard')}>
+      <ClipboardText size={16} weight="fill" /> {t('settings.nav.clipboard')}
     </button>
     <button class:active={section === 'about'} onclick={() => (section = 'about')}>
       <Info size={16} weight="fill" /> {t('settings.nav.about')}
@@ -764,6 +810,106 @@
           </ol>
         </div>
       {/if}
+    {:else if section === 'clipboard'}
+      {@const lifetime = preferences.value.clipboardLifetimeHours}
+      <h1>{t('settings.clipboard.title')}</h1>
+      <p class="intro">{t('settings.clipboard.intro')}</p>
+      <div class="card">
+        <div class="row">
+          <div class="text">
+            <div class="label">{t('settings.clipboard.history')}</div>
+            <div class="hint">{t('settings.clipboard.historyHint')}</div>
+          </div>
+          <button
+            class="switch"
+            class:on={preferences.value.clipboardHistory}
+            role="switch"
+            aria-checked={preferences.value.clipboardHistory}
+            aria-label={t('settings.clipboard.history')}
+            onclick={() => toggle('clipboardHistory')}
+          ><span></span></button>
+        </div>
+        {#if preferences.value.clipboardHistory}
+          <div class="row">
+            <label class="text" for="clipboard-lifetime">
+              <span class="label">{t('settings.clipboard.keep')}</span>
+              <span class="hint">{t('settings.clipboard.keepHint')}</span>
+            </label>
+            <select
+              id="clipboard-lifetime"
+              class="select"
+              value={lifetime}
+              onchange={(event) => setLifetime(Number(event.currentTarget.value))}
+            >
+              {#each LIFETIMES as option (option.hours)}
+                <option value={option.hours}>{t(`settings.clipboard.${option.label}`)}</option>
+              {/each}
+              <!-- A value set by hand in preferences.json is shown as it is. -->
+              {#if !LIFETIMES.some((option) => option.hours === lifetime)}
+                <option value={lifetime}>{t('settings.clipboard.hours', { count: lifetime })}</option>
+              {/if}
+            </select>
+          </div>
+          <div class="row">
+            <div class="text">
+              <div class="label">{t('settings.clipboard.limit')}</div>
+              <div class="hint">{t('settings.clipboard.limitHint')}</div>
+            </div>
+            <button
+              class="switch"
+              class:on={preferences.value.clipboardLimitEnabled}
+              role="switch"
+              aria-checked={preferences.value.clipboardLimitEnabled}
+              aria-label={t('settings.clipboard.limit')}
+              onclick={() => toggle('clipboardLimitEnabled')}
+            ><span></span></button>
+          </div>
+          {#if preferences.value.clipboardLimitEnabled}
+            <div class="row">
+              <label class="text" for="clipboard-limit">
+                <span class="label">{t('settings.clipboard.maxEntries')}</span>
+                <span class="hint">{t('settings.clipboard.maxEntriesHint', CLIPBOARD_LIMIT)}</span>
+              </label>
+              <span class="field">
+                <input
+                  id="clipboard-limit"
+                  class="port"
+                  type="number"
+                  min={CLIPBOARD_LIMIT.min}
+                  max={CLIPBOARD_LIMIT.max}
+                  step="1"
+                  value={preferences.value.clipboardLimit}
+                  onchange={setLimit}
+                />
+              </span>
+            </div>
+          {/if}
+          <div class="row">
+            <div class="text">
+              <div class="label">{t('settings.clipboard.saved')}</div>
+              <div class="hint">{t('settings.clipboard.entries', { count: clipboardHistory.entries.length })}</div>
+            </div>
+            {#if confirmClear}
+              <span class="confirm">
+                <span class="hint">{t('settings.clipboard.clearConfirm')}</span>
+                <button
+                  class="link remove"
+                  onclick={() => {
+                    clipboardHistory.clear();
+                    confirmClear = false;
+                  }}>{t('settings.clipboard.delete')}</button
+                >
+                <button class="link" onclick={() => (confirmClear = false)}>{t('settings.clipboard.keepIt')}</button>
+              </span>
+            {:else}
+              <button class="secondary" disabled={!clipboardHistory.entries.length} onclick={() => (confirmClear = true)}>
+                <Trash size={15} weight="fill" /> {t('settings.clipboard.clear')}
+              </button>
+            {/if}
+          </div>
+        {/if}
+      </div>
+      <p class="note">{t('settings.clipboard.private')}</p>
     {:else}
       <h1>{t('settings.about.title')}</h1>
       <div class="card about">
@@ -1350,6 +1496,7 @@
   .confirm {
     flex: none;
     display: flex;
+    align-items: center;
     gap: 12px;
   }
 

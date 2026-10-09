@@ -21,7 +21,7 @@
   import { onFileDrag, setHitRegion } from '../lib/platform';
   import { preferences } from '../lib/preferences.svelte';
   import { CLOSE_SPRING, OPEN_SPRING, Spring } from '../lib/spring';
-  import { ui } from '../lib/ui.svelte';
+  import { ui, type PanelTab } from '../lib/ui.svelte';
   import DropZones from './DropZones.svelte';
   import LiveActivity from './LiveActivity.svelte';
   import Panel from './Panel.svelte';
@@ -29,7 +29,7 @@
   type Mode = 'collapsed' | 'expanded' | 'dropping';
 
   let mode = $state<Mode>('collapsed');
-  let tab = $state<'widgets' | 'tray'>('widgets');
+  let tab = $state<PanelTab>('widgets');
   let dropZone = $state<string | null>(null);
   let panelSize = $state({ width: 640, height: 220 });
   let capsuleWidth = $state(0);
