@@ -6,7 +6,7 @@ import type { WidgetManifest } from './registry.svelte';
 export const BUILT_IN_WIDGETS = [
   { id: 'builtin:media', name: 'Now Playing', description: 'Cover, playback controls and progress of the current track' },
   { id: 'builtin:mirror', name: 'Mirror', description: 'Camera preview, off as soon as the island closes' },
-  { id: 'builtin:calendar', name: 'Calendar', description: 'The week around today' },
+  { id: 'builtin:calendar', name: 'Calendar', description: 'The week around today, with events from your calendar link or file' },
 ] as const;
 
 export type BuiltInWidgetId = (typeof BUILT_IN_WIDGETS)[number]['id'];

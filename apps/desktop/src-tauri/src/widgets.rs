@@ -221,6 +221,9 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
     if let Some(bad) = manifest.network.iter().find(|origin| !is_valid_origin(origin)) {
         return Err(format!("invalid network origin {bad:?}: expected https://host[:port]"));
     }
+    if let Some(setting) = manifest.settings.iter().find(|setting| setting.picks_file()) {
+        return Err(format!("setting {:?}: installed widgets cannot ask for files", setting.key()));
+    }
     crate::widget_settings::validate(&manifest.settings)
 }
 
@@ -388,6 +391,18 @@ mod tests {
             network.network = vec![bad.into()];
             assert!(validate(&network).is_err(), "{bad} should be rejected");
         }
+    }
+
+    #[test]
+    fn installed_widgets_cannot_ask_for_files() {
+        let mut picker = manifest("dev.lizun.hello");
+        picker.settings = serde_json::from_value(serde_json::json!([{
+            "key": "path", "type": "text", "label": "File", "default": "",
+            "file": { "name": "Text", "extensions": ["txt"] }
+        }]))
+        .unwrap();
+        assert!(crate::widget_settings::validate(&picker.settings).is_ok());
+        assert!(validate(&picker).unwrap_err().contains("cannot ask for files"));
     }
 
     #[test]

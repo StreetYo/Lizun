@@ -13,7 +13,14 @@ export type SettingSpec =
   | (SettingBase & { type: 'toggle'; default: boolean })
   | (SettingBase & { type: 'number'; default: number; min: number; max: number; step: number; unit: string })
   | (SettingBase & { type: 'select'; default: string; options: { value: string; label: string }[] })
-  | (SettingBase & { type: 'text'; default: string; maxLength: number; placeholder: string });
+  | (SettingBase & {
+      type: 'text';
+      default: string;
+      maxLength: number;
+      placeholder: string;
+      /** Built-in widgets only: a button fills the field with the path of a file picked in a dialog. */
+      file?: { name: string; extensions: string[] };
+    });
 
 export interface WidgetManifest {
   id: string;

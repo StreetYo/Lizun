@@ -326,17 +326,7 @@ fn join(folder: &[&str]) -> Option<String> {
 }
 
 fn download(url: &str) -> Result<Vec<u8>, String> {
-    let tls = ureq::tls::TlsConfig::builder()
-        .provider(ureq::tls::TlsProvider::NativeTls)
-        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-        .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls)
-        .timeout_connect(Some(Duration::from_secs(15)))
-        .timeout_global(Some(Duration::from_secs(180)))
-        .user_agent(concat!("Lizun/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .into();
+    let agent = crate::http::agent(Duration::from_secs(180));
     log::info!("downloading a widget from {url}");
     let mut response = agent.get(url).call().map_err(|err| match err {
         ureq::Error::StatusCode(404) => {

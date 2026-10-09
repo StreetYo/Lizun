@@ -42,3 +42,11 @@ impl MediaController {
 pub fn spawn_media_watcher(_on_update: impl Fn(Vec<Player>) + Send + 'static) -> Option<MediaController> {
     None
 }
+
+pub fn iana_time_zone(_windows_name: &str) -> Option<String> {
+    None
+}
+
+pub fn current_time_zone() -> Option<String> {
+    None
+}

@@ -1,7 +1,8 @@
 # ADR 0002: Widget settings declared in the manifest
 
-Status: accepted (2026-10-07). Implemented for installed widgets; the built-in widgets follow
-when they get options. The format is described in [widgets.md](../widgets.md#settings).
+Status: accepted (2026-10-07). Implemented for installed widgets and, since 2026-10-09, for the
+built-in calendar ([ADR 0006](0006-calendar-feed.md)). The format is described in
+[widgets.md](../widgets.md#settings).
 
 ## Context
 

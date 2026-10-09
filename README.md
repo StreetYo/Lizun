@@ -16,6 +16,8 @@ list, and widgets anyone can write and install.
   windows below. The only exception is typing into a widget's text field, after which the
   focus goes back to your app.
 - To-do list, written on the widget SDK and shipped with the app.
+- Calendar: the week around today with your events, from the iCal link of a Google, Outlook or
+  iCloud calendar or from an .ics file (Settings > Widgets > Calendar), recurring events included.
 - Now playing for any app in the Windows media flyout (Spotify, browsers, Telegram, ...), with
   play/pause/next/previous.
 - File tray: drag files from Explorer onto the island, drag them back out into any app.

@@ -68,6 +68,7 @@ animating). "Memory" is the private working set, the value Task Manager shows.
   monitor; it does not follow monitor or resolution changes yet.
 - Keyboard input (notes, tasks) needs the window to become focusable temporarily.
 - Share zone (Windows share sheet / Nearby Share) is a placeholder.
-- Volume and brightness HUD replacement, calendar data, timers, notes, tasks: not started.
+- Volume and brightness HUD replacement, timers, notes, tasks: not started. Calendar events come from an
+  iCal link (ADR 0006).
 - Windows 11 has a system "Drag tray" that can appear at the top of the screen during file
   drags; check how it interacts with the island on machines where it is enabled.

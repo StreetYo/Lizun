@@ -3,6 +3,9 @@ import type { SettingValue, WidgetManifest } from './registry.svelte';
 
 export type SettingValues = Record<string, SettingValue>;
 
+/** A widget with settings: an installed one, or a built-in one whose settings come from the core. */
+export type SettingsOwner = Pick<WidgetManifest, 'id' | 'settings'>;
+
 /** Values of the widgets' own settings, kept by the core and shared by all windows. */
 class WidgetSettingsStore {
   values = $state<Record<string, SettingValues>>({});
@@ -27,7 +30,7 @@ class WidgetSettingsStore {
   }
 
   /** A plain copy of the widget's values, with defaults for anything not loaded yet. */
-  of(widget: WidgetManifest): SettingValues {
+  of(widget: SettingsOwner): SettingValues {
     const defaults = Object.fromEntries(widget.settings.map((setting) => [setting.key, setting.default]));
     return { ...defaults, ...this.values[widget.id] };
   }

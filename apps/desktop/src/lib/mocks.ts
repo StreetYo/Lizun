@@ -31,6 +31,34 @@ let mockPreferences: unknown = {
 /** Widgets the preview lists; empty, but a test can push manifests into it. */
 export const mockWidgets: { id: string; settings: { key: string; default: unknown }[] }[] = [];
 const mockWidgetSettings: Record<string, Record<string, unknown>> = {};
+/** Mirrors `settings()` in src-tauri/src/calendar.rs. */
+const mockBuiltInSettings = {
+  'builtin:calendar': [
+    { key: 'icsUrl', type: 'text', label: 'Calendar link or file', description: 'The secret iCal address of a Google, Outlook or iCloud calendar, or the path to an .ics file. It stays on this computer.', default: '', maxLength: 500, placeholder: 'https://…/basic.ics or C:\\…\\calendar.ics', file: { name: 'Calendar', extensions: ['ics'] } },
+    { key: 'endedToday', type: 'select', label: 'Events that ended today', description: 'Earlier days always show their events, dimmed.', default: 'dim', options: [{ value: 'dim', label: 'Show dimmed' }, { value: 'hide', label: 'Hide' }] },
+    { key: 'refreshMinutes', type: 'number', label: 'Refresh every', description: 'Google updates the feed itself only every few hours. Files are read again as soon as they change.', default: 15, min: 5, max: 240, step: 5, unit: 'min' },
+  ],
+};
+
+/** Events of the week around today for the preview: a meeting now, one later, an all-day one. */
+function mockCalendar(): unknown {
+  const at = (days: number, hours: number, minutes = 0) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    date.setHours(hours, minutes, 0, 0);
+    return date.getTime();
+  };
+  const hour = new Date().getHours();
+  const events = [
+    { title: 'Conference', location: '', start: at(0, 0), end: at(1, 0), allDay: true },
+    { title: 'Design review', location: 'Room 4', start: at(0, hour), end: at(0, hour + 1), allDay: false },
+    { title: 'Lunch with Alex', location: '', start: at(0, hour + 2), end: at(0, hour + 3), allDay: false },
+    { title: 'Weekly planning', location: '', start: at(1, 10), end: at(1, 11), allDay: false },
+    { title: 'Dentist', location: '', start: at(3, 16, 30), end: at(3, 17), allDay: false },
+  ];
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return { configured: true, loading: false, events, error: null, updatedAt: Date.now(), timeZone };
+}
 let mockPending: { id: string } & Record<string, unknown> | null = null;
 
 function mockSettingsOf(widgetId: string): Record<string, unknown> {
@@ -71,8 +99,12 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     case 'widgets_list':
     case 'widgets_reload':
       return mockWidgets as T;
+    case 'widget_settings_built_in':
+      return mockBuiltInSettings as T;
     case 'widget_settings_all':
       return Object.fromEntries(mockWidgets.map((w) => [w.id, mockSettingsOf(w.id)])) as T;
+    case 'calendar_snapshot':
+      return mockCalendar() as T;
     case 'widget_settings_set': {
       const { widgetId, key, value } = args as { widgetId: string; key: string; value: unknown };
       mockWidgetSettings[widgetId] = { ...mockWidgetSettings[widgetId], [key]: value };

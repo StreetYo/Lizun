@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Island from './components/Island.svelte';
+  import { calendar } from './lib/calendar.svelte';
   import { fileTray } from './lib/fileTray.svelte';
   import { keyboard } from './lib/keyboard.svelte';
   import { isTauri, listen } from './lib/platform';
@@ -13,6 +14,7 @@
     if (!isTauri) document.body.classList.add('preview');
     void preferences.start();
     void media.start();
+    void calendar.start();
     void fileTray.restore();
     void widgetRegistry.load();
     void widgetSettings.start();

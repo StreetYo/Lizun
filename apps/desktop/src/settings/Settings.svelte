@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
+  import { open } from '@tauri-apps/plugin-dialog';
   import ArrowClockwise from 'phosphor-svelte/lib/ArrowClockwise';
   import CircleNotch from 'phosphor-svelte/lib/CircleNotch';
   import DotsSixVertical from 'phosphor-svelte/lib/DotsSixVertical';
@@ -20,7 +21,7 @@
   import { WidgetInstaller } from '../lib/widgets/installer.svelte';
   import { BUILT_IN_WIDGETS, moveWidget, setWidgetEnabled, widgetLayout } from '../lib/widgets/layout.svelte';
   import type { SettingSpec, SettingValue, WidgetManifest } from '../lib/widgets/registry.svelte';
-  import { widgetSettings } from '../lib/widgets/settings.svelte';
+  import { widgetSettings, type SettingsOwner } from '../lib/widgets/settings.svelte';
 
   type Section = 'general' | 'media' | 'widgets' | 'about';
 
@@ -53,6 +54,8 @@
   let section = $state<Section>('general');
   let launchAtLogin = $state(false);
   let widgets = $state<WidgetManifest[]>([]);
+  /** Settings of the built-in widgets, declared in the core. */
+  let builtInSettings = $state<Record<string, SettingSpec[]>>({});
   // Widgets shipped with Lizun are listed with the other built-in ones.
   const bundledWidgets = $derived(widgets.filter((widget) => widget.source === 'bundled'));
   const installedWidgets = $derived(widgets.filter((widget) => widget.source !== 'bundled'));
@@ -66,6 +69,7 @@
     void (async () => {
       info = (await invoke('app_info')) ?? info;
       widgets = (await invoke<WidgetManifest[]>('widgets_list')) ?? [];
+      builtInSettings = (await invoke<Record<string, SettingSpec[]>>('widget_settings_built_in')) ?? {};
       if (isTauri) launchAtLogin = await isEnabled().catch(() => false);
     })();
     // A zip archive or a folder dropped anywhere on the window is installed as a widget.
@@ -174,7 +178,7 @@
     await widgetSettings.load();
   }
 
-  async function setWidgetSetting(widget: WidgetManifest, key: string, value: SettingValue): Promise<void> {
+  async function setWidgetSetting(widget: SettingsOwner, key: string, value: SettingValue): Promise<void> {
     error = null;
     try {
       await widgetSettings.set(widget.id, key, value);
@@ -186,7 +190,7 @@
   /** Numbers are clamped to the declared range; anything that is not a number restores the saved value. */
   async function setWidgetNumber(
     event: Event,
-    widget: WidgetManifest,
+    widget: SettingsOwner,
     setting: Extract<SettingSpec, { type: 'number' }>,
   ): Promise<void> {
     const input = event.currentTarget as HTMLInputElement;
@@ -200,7 +204,24 @@
     await setWidgetSetting(widget, setting.key, clamped);
   }
 
-  async function resetWidgetSettings(widget: WidgetManifest): Promise<void> {
+  /** Fills a text setting with the path of a file the user picks. */
+  async function chooseFile(
+    widget: SettingsOwner,
+    setting: Extract<SettingSpec, { type: 'text' }>,
+    file: { name: string; extensions: string[] },
+  ): Promise<void> {
+    error = null;
+    try {
+      const path = isTauri
+        ? await open({ title: `Choose a file for ${setting.label}`, filters: [{ name: file.name, extensions: file.extensions }] })
+        : `C:\\Users\\you\\Downloads\\calendar.${file.extensions[0]}`;
+      if (typeof path === 'string') await setWidgetSetting(widget, setting.key, path);
+    } catch (err) {
+      error = `Could not open the file dialog: ${err}`;
+    }
+  }
+
+  async function resetWidgetSettings(widget: SettingsOwner): Promise<void> {
     error = null;
     try {
       await widgetSettings.reset(widget.id);
@@ -282,7 +303,7 @@
   }
 </script>
 
-{#snippet widgetSettingRows(widget: WidgetManifest)}
+{#snippet widgetSettingRows(widget: SettingsOwner)}
   {#if widget.settings.length}
     {@const values = widgetSettings.of(widget)}
     {#each widget.settings as setting (setting.key)}
@@ -308,7 +329,7 @@
   </div>
 {/snippet}
 
-{#snippet settingRow(widget: WidgetManifest, setting: SettingSpec, value: SettingValue)}
+{#snippet settingRow(widget: SettingsOwner, setting: SettingSpec, value: SettingValue)}
   {@const id = `setting-${widget.id}-${setting.key}`}
   <div class="row setting">
     <label class="text" for={id}>
@@ -345,15 +366,24 @@
         {/each}
       </select>
     {:else}
-      <input
-        {id}
-        class="text-input"
-        type="text"
-        maxlength={setting.maxLength}
-        placeholder={setting.placeholder}
-        {value}
-        onchange={(event) => setWidgetSetting(widget, setting.key, event.currentTarget.value)}
-      />
+      <span class="picker">
+        <input
+          {id}
+          class="text-input"
+          type="text"
+          maxlength={setting.maxLength}
+          placeholder={setting.placeholder}
+          title={setting.file ? String(value) : undefined}
+          {value}
+          onchange={(event) => setWidgetSetting(widget, setting.key, event.currentTarget.value)}
+        />
+        {#if setting.file}
+          {@const file = setting.file}
+          <button class="secondary compact" title="Choose a file" onclick={() => chooseFile(widget, setting, file)}>
+            <FolderOpen size={14} weight="fill" /> Choose…
+          </button>
+        {/if}
+      </span>
     {/if}
   </div>
 {/snippet}
@@ -525,6 +555,7 @@
             </div>
             <span class="badge">Built in</span>
           </div>
+          {@render widgetSettingRows({ id: widget.id, settings: builtInSettings[widget.id] ?? [] })}
         {/each}
         {#each bundledWidgets as widget (widget.id)}
           <div class="row">
@@ -1157,6 +1188,19 @@
   .source-icon {
     display: grid;
     color: var(--text-secondary);
+  }
+
+  .picker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .secondary.compact {
+    height: 28px;
+    padding: 0 10px;
+    gap: 5px;
+    font-size: 12.5px;
   }
 
   .text-input.link-input {

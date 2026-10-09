@@ -1,4 +1,7 @@
+mod calendar;
 mod file_tray;
+mod http;
+mod ics;
 mod island;
 mod media;
 mod platform;
@@ -37,6 +40,7 @@ pub fn run() {
             media::media_players,
             media::media_select,
             browser::browser_media_status,
+            calendar::calendar_snapshot,
             file_tray::file_tray_allow,
             widgets::widgets_list,
             widgets::widgets_reload,
@@ -45,6 +49,7 @@ pub fn run() {
             widget_install::widgets_install_confirm,
             widget_install::widgets_install_cancel,
             widget_install::widgets_uninstall,
+            widget_settings::widget_settings_built_in,
             widget_settings::widget_settings_all,
             widget_settings::widget_settings_set,
             widget_settings::widget_settings_reset,
@@ -59,6 +64,7 @@ pub fn run() {
             widgets::init(app.handle());
             widget_install::init(app.handle());
             widget_settings::init(app.handle());
+            calendar::start(app.handle());
             island::setup(app)?;
             system_tray::setup(app)?;
             media::start(app.handle());

@@ -30,6 +30,16 @@ pub struct SelectOption {
     pub label: String,
 }
 
+/// The kind of file a text setting can be filled with from a file dialog.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileChoice {
+    /// Shown in the dialog's file type list, such as "Calendar".
+    pub name: String,
+    /// Extensions without the dot, such as `ics`.
+    pub extensions: Vec<String>,
+}
+
 /// One entry of the manifest's `settings` list.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
@@ -72,6 +82,11 @@ pub enum SettingSpec {
         max_length: usize,
         #[serde(default)]
         placeholder: String,
+        /// Adds a button that fills the field with the path of a file picked in a dialog. Only
+        /// for built-in widgets: an installed widget runs in a sandbox and cannot read files, and
+        /// the path would tell it about the user's folders.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file: Option<FileChoice>,
     },
 }
 
@@ -106,6 +121,11 @@ impl SettingSpec {
             | Self::Select { description, .. }
             | Self::Text { description, .. } => description,
         }
+    }
+
+    /// True for a text setting that can be filled from a file dialog.
+    pub fn picks_file(&self) -> bool {
+        matches!(self, Self::Text { file: Some(_), .. })
     }
 
     fn default_value(&self) -> Value {
@@ -191,12 +211,19 @@ pub fn validate(settings: &[SettingSpec]) -> Result<(), String> {
                     return Err(field("default is not one of the options"));
                 }
             }
-            SettingSpec::Text { default, max_length, placeholder, .. } => {
+            SettingSpec::Text { default, max_length, placeholder, file, .. } => {
                 if !(1..=500).contains(max_length) {
                     return Err(field("maxLength must be 1 to 500"));
                 }
                 check_length(&field("default"), default, 0..=*max_length)?;
                 check_length(&field("placeholder"), placeholder, 0..=100)?;
+                if let Some(file) = file {
+                    check_length(&field("file name"), &file.name, 1..=60)?;
+                    let extension_ok = |e: &String| (1..=10).contains(&e.len()) && e.chars().all(|c| c.is_ascii_alphanumeric());
+                    if !(1..=10).contains(&file.extensions.len()) || !file.extensions.iter().all(extension_ok) {
+                        return Err(field("file needs 1 to 10 extensions of letters and digits, without the dot"));
+                    }
+                }
             }
         }
     }
@@ -275,25 +302,50 @@ fn commit(app: &AppHandle, store: &Store, widget_id: &str, stored: Option<Values
     if let Err(err) = app.emit(EVENT_CHANGED, Changed { widget_id, values }) {
         log::warn!("failed to announce new settings of {widget_id}: {err}");
     }
+    if widget_id == crate::calendar::WIDGET_ID {
+        crate::calendar::settings_changed(app);
+    }
     Ok(())
 }
 
+/// Settings of the widgets that are part of the app, declared here instead of in a manifest.
+fn built_in() -> Vec<(&'static str, Vec<SettingSpec>)> {
+    vec![(crate::calendar::WIDGET_ID, crate::calendar::settings())]
+}
+
 fn settings_of(app: &AppHandle, widget_id: &str) -> Result<Vec<SettingSpec>, String> {
+    if let Some((_, settings)) = built_in().into_iter().find(|(id, _)| *id == widget_id) {
+        return Ok(settings);
+    }
     crate::widgets::find(app, widget_id)
         .map(|manifest| manifest.settings)
         .ok_or_else(|| format!("no installed widget {widget_id:?}"))
 }
 
-/// Values of every installed widget that declares settings.
+/// Current values of a widget, with defaults for anything the user has not set.
+pub fn values_of(app: &AppHandle, widget_id: &str) -> Values {
+    let Ok(settings) = settings_of(app, widget_id) else { return Values::new() };
+    resolve(&settings, app.state::<Store>().0.lock().unwrap().get(widget_id))
+}
+
+/// Settings of the built-in widgets that have any, by widget id.
+#[tauri::command]
+pub fn widget_settings_built_in() -> HashMap<&'static str, Vec<SettingSpec>> {
+    built_in().into_iter().collect()
+}
+
+/// Values of every built-in or installed widget that declares settings.
 #[tauri::command]
 pub fn widget_settings_all(app: AppHandle, store: State<'_, Store>) -> HashMap<String, Values> {
     let stored = store.0.lock().unwrap();
-    crate::widgets::installed(&app)
-        .into_iter()
-        .filter(|manifest| !manifest.settings.is_empty())
-        .map(|manifest| {
-            let values = resolve(&manifest.settings, stored.get(&manifest.id));
-            (manifest.id, values)
+    let built_in = built_in().into_iter().map(|(id, settings)| (id.to_string(), settings));
+    let installed = crate::widgets::installed(&app).into_iter().map(|manifest| (manifest.id, manifest.settings));
+    built_in
+        .chain(installed)
+        .filter(|(_, settings)| !settings.is_empty())
+        .map(|(id, settings)| {
+            let values = resolve(&settings, stored.get(&id));
+            (id, values)
         })
         .collect()
 }
