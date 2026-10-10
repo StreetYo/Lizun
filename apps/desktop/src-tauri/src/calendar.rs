@@ -7,6 +7,7 @@
 
 use std::fs;
 use std::io::ErrorKind;
+use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -246,7 +247,8 @@ fn events_around_today(text: &str, zone: Tz) -> Vec<Event> {
 enum Source {
     /// A link with its scheme; `webcal://` links are already turned into `https://` ones.
     Web(String),
-    /// A link typed without a scheme, such as `calendar.google.com/…`: HTTPS first, then HTTP.
+    /// A link typed without a scheme, such as `calendar.google.com/…`: read over HTTPS, since the
+    /// link is a secret. Only a server on this computer is tried over HTTP as well.
     Host(String),
     /// An .ics file on this computer or a network share.
     File(PathBuf),
@@ -290,10 +292,10 @@ impl Source {
             Self::Web(url) => fetch(url).map_err(describe)?,
             Self::Host(rest) => fetch(&format!("https://{rest}"))
                 .or_else(|err| {
-                    if !is_connection_error(&err) {
+                    if !may_fall_back_to_http(rest, &err) {
                         return Err(err);
                     }
-                    // A server without HTTPS. If it answers over HTTP at all, its answer explains more.
+                    // A local server without HTTPS. If it answers over HTTP at all, its answer explains more.
                     fetch(&format!("http://{rest}")).map_err(|http| if is_connection_error(&http) { err } else { http })
                 })
                 .map_err(describe)?,
@@ -358,6 +360,17 @@ fn fetch(url: &str) -> Result<Vec<u8>, ureq::Error> {
 /// True when the server could not be reached at all, as opposed to answering with an error.
 fn is_connection_error(err: &ureq::Error) -> bool {
     !matches!(err, ureq::Error::StatusCode(_) | ureq::Error::BodyExceedsLimit(_))
+}
+
+/// True when a link typed without a scheme may be read over plain HTTP after HTTPS failed with
+/// `err`. Only a server on this computer may: elsewhere, anyone on the network could make HTTPS
+/// fail, a certificate check for one, and read the secret link from the plain request. Other
+/// servers without HTTPS need an explicit `http://` link.
+fn may_fall_back_to_http(rest: &str, err: &ureq::Error) -> bool {
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = authority.rsplit_once(':').map_or(authority, |(host, _)| host);
+    let local = host.eq_ignore_ascii_case("localhost") || host.parse::<Ipv4Addr>().is_ok_and(|ip| ip.is_loopback());
+    local && is_connection_error(err)
 }
 
 fn describe(err: ureq::Error) -> String {
@@ -425,6 +438,43 @@ mod tests {
         assert_eq!(Source::parse("file://localhost/C:/cal.ics"), file("C:/cal.ics"));
         assert_eq!(Source::parse("file://server/share/cal.ics"), file("//server/share/cal.ics"));
         assert!(Source::parse("file:///relative.ics").is_err());
+    }
+
+    #[test]
+    fn falls_back_to_http_only_on_this_computer() {
+        let refused = ureq::Error::ConnectionFailed;
+        let certificate = ureq::Error::Tls("invalid certificate");
+        assert!(may_fall_back_to_http("localhost:8080/cal.ics", &refused));
+        assert!(may_fall_back_to_http("LOCALHOST/cal.ics", &certificate));
+        assert!(may_fall_back_to_http("127.0.0.1:5232/user/cal.ics", &certificate));
+        assert!(!may_fall_back_to_http("localhost:8080/cal.ics", &ureq::Error::StatusCode(404)));
+        for remote in ["calendar.google.com/calendar/ical/x/basic.ics", "localhost.example.com/cal.ics", "10.0.0.2/cal.ics"]
+        {
+            assert!(!may_fall_back_to_http(remote, &refused), "{remote}");
+            assert!(!may_fall_back_to_http(remote, &certificate), "{remote}");
+        }
+    }
+
+    #[test]
+    fn reads_a_local_server_without_https() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            // The TLS handshake comes first and gets no answer.
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.unwrap();
+                let mut request = [0u8; 4096];
+                let read = stream.read(&mut request).unwrap_or(0);
+                if request[..read].starts_with(b"GET ") {
+                    let body = "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n";
+                    let reply = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    stream.write_all(reply.as_bytes()).unwrap();
+                }
+            }
+        });
+        assert!(Source::Host(format!("127.0.0.1:{port}/cal.ics")).read().is_ok());
+        server.join().unwrap();
     }
 
     #[test]

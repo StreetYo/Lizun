@@ -13,8 +13,10 @@ was retired in favour of the new Outlook, which keeps its data to itself.
 
 - **The user pastes the calendar's secret iCal (.ics) address** into the widget's settings
   (Settings > Widgets > Calendar). Google, Outlook and iCloud all offer one, and it needs no
-  sign-in, no app registration and no tokens. `webcal://` links are read over HTTPS, and a link
-  typed without a scheme is tried over HTTPS, then over HTTP if the server cannot be reached.
+  sign-in, no app registration and no tokens. `webcal://` links are read over HTTPS, and so is
+  a link typed without a scheme. Only `localhost` and 127.x.x.x are then tried over HTTP if
+  HTTPS fails: for any other host, someone on the network could make HTTPS fail on purpose and
+  read the secret link from the plain request, so a server without HTTPS needs `http://`.
 - **An .ics file works too**: a path such as `C:\Users\you\calendar.ics` (with or without the
   quotes Explorer's "Copy as path" adds), a network share or a `file://` link. This covers
   invitations exported from Zoom or Teams and saved from mail. The file is checked for changes
