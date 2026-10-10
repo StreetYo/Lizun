@@ -4,8 +4,9 @@
 //! A widget is a folder with a `manifest.json` and web files. It runs in an iframe with an
 //! opaque origin, so it cannot reach the island page or the Tauri IPC; it talks to the island
 //! only through the SDK (postMessage), and the island checks every call against the
-//! permissions declared in the manifest. Network access is limited by a CSP built from the
-//! manifest's `network` list.
+//! permissions declared in the manifest. Network access is limited to the manifest's `network`
+//! list: by a CSP for the widget's own `fetch`, and in `widget_network` for requests the core
+//! sends for it.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -47,9 +48,13 @@ pub struct WidgetManifest {
     pub width: u32,
     #[serde(default)]
     pub permissions: Vec<String>,
-    /// Origins the widget may fetch from, such as `https://api.example.com`.
+    /// Origins the widget may reach, such as `https://api.example.com`, or `http://127.0.0.1:8765`
+    /// for an app on this computer.
     #[serde(default)]
     pub network: Vec<String>,
+    /// Programs the widget may start, such as Anki for the Anki widget.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps: Vec<crate::widget_apps::AppSpec>,
     /// Options the user changes in the settings window.
     #[serde(default)]
     pub settings: Vec<crate::widget_settings::SettingSpec>,
@@ -240,8 +245,11 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
         return Err(format!("unknown permission {unknown:?}"));
     }
     if let Some(bad) = manifest.network.iter().find(|origin| !is_valid_origin(origin)) {
-        return Err(format!("invalid network origin {bad:?}: expected https://host[:port]"));
+        return Err(format!(
+            "invalid network origin {bad:?}: expected https://host[:port], or http://127.0.0.1:port or http://localhost:port (debugger, Docker and Lizun ports are refused)"
+        ));
     }
+    crate::widget_apps::validate(&manifest.apps)?;
     if let Some(setting) = manifest.settings.iter().find(|setting| setting.picks_file()) {
         return Err(format!("setting {:?}: installed widgets cannot ask for files", setting.key()));
     }
@@ -262,15 +270,31 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
     Ok(())
 }
 
-/// Accepts `https://host[:port]` with an optional leading `*.` wildcard, nothing else, so a
-/// manifest cannot smuggle extra CSP directives.
+/// Hosts a widget may reach over plain HTTP: apps on this computer, such as Anki with
+/// AnkiConnect, rarely serve HTTPS.
+const LOOPBACK_HOSTS: &[&str] = &["127.0.0.1", "localhost"];
+
+/// Ports on this computer no widget may reach, because what listens there can take over the
+/// computer or Lizun: debuggers (Chromium and WebView2, Node), Docker's API, and Lizun's own
+/// browser extension server at its default port (the port set in the preferences is refused
+/// when a request is sent, see `widget_network.rs`).
+pub const FORBIDDEN_LOOPBACK_PORTS: &[u16] = &[2375, 2376, 6869, 9222, 9229];
+
+/// Accepts `https://host[:port]` with an optional leading `*.` wildcard, and
+/// `http://127.0.0.1:port` or `http://localhost:port` with a port that is not in
+/// `FORBIDDEN_LOOPBACK_PORTS`, nothing else, so a manifest cannot smuggle extra CSP directives.
 fn is_valid_origin(origin: &str) -> bool {
+    let valid_port = |port: &str| port.is_empty() || port.parse::<u16>().is_ok_and(|port| port > 0);
+    if let Some(host) = origin.strip_prefix("http://") {
+        // An app on this computer is named by its port, so a widget never gets the whole host.
+        let Some((name, port)) = host.split_once(':') else { return false };
+        let Ok(port) = port.parse::<u16>() else { return false };
+        return LOOPBACK_HOSTS.contains(&name) && port > 0 && !FORBIDDEN_LOOPBACK_PORTS.contains(&port);
+    }
     let Some(host) = origin.strip_prefix("https://") else { return false };
     let host = host.strip_prefix("*.").unwrap_or(host);
     let (name, port) = host.split_once(':').unwrap_or((host, ""));
-    !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
-        && port.chars().all(|c| c.is_ascii_digit())
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') && valid_port(port)
 }
 
 /// Returns the path only if it is relative and made of plain components (no `..`, roots,
@@ -397,6 +421,7 @@ mod tests {
             width: default_width(),
             permissions: vec!["media:read".into()],
             network: vec![],
+            apps: vec![],
             settings: vec![],
             locales: BTreeMap::new(),
         }
@@ -421,9 +446,25 @@ mod tests {
         assert!(validate(&unknown).is_err());
 
         let mut network = manifest("dev.lizun.hello");
-        network.network = vec!["https://api.example.com".into(), "https://*.example.org:8443".into()];
+        network.network = vec![
+            "https://api.example.com".into(),
+            "https://*.example.org:8443".into(),
+            "http://127.0.0.1:8765".into(),
+            "http://localhost:3000".into(),
+        ];
         assert!(validate(&network).is_ok());
-        for bad in ["http://api.example.com", "https://a.com/path", "https://a.com; script-src *", "*"] {
+        for bad in [
+            "http://api.example.com",
+            "http://*.localhost",
+            "http://127.0.0.1:8765/path",
+            "http://127.0.0.1:99999",
+            "http://localhost",
+            "http://127.0.0.1:9222",
+            "http://localhost:6869",
+            "https://a.com/path",
+            "https://a.com; script-src *",
+            "*",
+        ] {
             network.network = vec![bad.into()];
             assert!(validate(&network).is_err(), "{bad} should be rejected");
         }

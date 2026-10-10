@@ -263,6 +263,8 @@
       "storage": "Stores data",
       "activity": "Shows in the closed island",
       "network": "Network: {origin}",
+      "local": "Talks to a program on this computer (port {port})",
+      "app": "Starts {name}",
       "none": "No permissions"
     },
     "media": {

@@ -8,13 +8,14 @@ import { debug } from '../debug';
 import { i18n } from '../i18n.svelte';
 import { keyboard } from '../keyboard.svelte';
 import { media, type MediaCommand } from '../media.svelte';
+import { invoke } from '../platform';
 import { activities, parseActivity } from './activities.svelte';
 import type { WidgetManifest } from './registry.svelte';
 import { widgetSettings } from './settings.svelte';
 
 const PROTOCOL = 1;
-const STORAGE_PREFIX = 'lizun.widget.';
-const MAX_STORED_VALUE = 64 * 1024;
+/** Where `storage` kept values in the island's localStorage before they moved to files. */
+const LEGACY_STORAGE_PREFIX = 'lizun.widget.';
 
 /** Design tokens handed to widgets so they can match the island. */
 const THEME = {
@@ -64,20 +65,44 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
       return media.control(command);
     },
   },
+  // Values are files kept by the core (src-tauri/src/widget_storage.rs), which checks keys and sizes.
   'storage.get': {
     permission: 'storage',
-    handler: ({ widget }, params) => {
-      const raw = localStorage.getItem(storageKey(widget, params.key));
+    handler: async ({ widget }, params) => {
+      const key = storageKey(params.key);
+      await moveLegacyValues(widget);
+      const raw = await invoke<string | null>('widget_storage_get', { widgetId: widget.id, key });
       return raw === null ? null : JSON.parse(raw);
     },
   },
   'storage.set': {
     permission: 'storage',
-    handler: ({ widget }, params) => {
-      const raw = JSON.stringify(params.value ?? null);
-      if (raw.length > MAX_STORED_VALUE) throw new Error(`value exceeds ${MAX_STORED_VALUE} bytes`);
-      localStorage.setItem(storageKey(widget, params.key), raw);
+    handler: async ({ widget }, params) => {
+      const key = storageKey(params.key);
+      await moveLegacyValues(widget);
+      await invoke('widget_storage_set', { widgetId: widget.id, key, value: JSON.stringify(params.value ?? null) });
     },
+  },
+  'storage.remove': {
+    permission: 'storage',
+    handler: async ({ widget }, params) => {
+      const key = storageKey(params.key);
+      await moveLegacyValues(widget);
+      await invoke('widget_storage_remove', { widgetId: widget.id, key });
+    },
+  },
+  // Sends a request from the core: no CORS and no Origin header, only to the manifest's
+  // `network` origins, which the core checks (src-tauri/src/widget_network.rs).
+  'network.request': {
+    handler: ({ widget }, params) => invoke('widget_network_request', { widgetId: widget.id, request: params }),
+  },
+  // Programs from the manifest's `apps` list, checked by the core (src-tauri/src/widget_apps.rs).
+  'apps.start': {
+    handler: ({ widget }, params) =>
+      invoke('widget_app_start', { widgetId: widget.id, appId: String(params.id), hidden: params.hidden === true }),
+  },
+  'apps.show': {
+    handler: ({ widget }, params) => invoke('widget_app_show', { widgetId: widget.id, appId: String(params.id) }),
   },
   'activity.set': {
     permission: 'activity',
@@ -102,9 +127,42 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
 
 const frames = new Map<MessageEventSource, Frame>();
 
-function storageKey(widget: WidgetManifest, key: unknown): string {
+function storageKey(key: unknown): string {
   if (typeof key !== 'string' || !key || key.length > 128) throw new Error('invalid storage key');
-  return `${STORAGE_PREFIX}${widget.id}.${key}`;
+  return key;
+}
+
+/** Widgets whose old values were looked for in this session, with the move in progress. */
+const legacyMoves = new Map<string, Promise<void>>();
+
+/**
+ * Moves the values an older Lizun kept for this widget in localStorage, under
+ * `lizun.widget.<id>.<key>`, to the core, once per session before the widget's first storage
+ * call. Ids contain dots, so the key is read as the part after the last dot and the id as
+ * everything before it; keys with dots were never written by the widgets of those versions and
+ * stay where they are. That way a widget can only ever get values written under its own id.
+ */
+function moveLegacyValues(widget: WidgetManifest): Promise<void> {
+  let move = legacyMoves.get(widget.id);
+  if (!move) {
+    move = (async () => {
+      const prefix = `${LEGACY_STORAGE_PREFIX}${widget.id}.`;
+      const keys = Object.keys(localStorage).filter((name) => name.startsWith(prefix) && !name.slice(prefix.length).includes('.'));
+      for (const name of keys) {
+        const key = name.slice(prefix.length);
+        const raw = localStorage.getItem(name);
+        if (!key || raw === null) continue;
+        // A value the widget already saved in the core is newer.
+        const current = await invoke<string | null>('widget_storage_get', { widgetId: widget.id, key });
+        if (current === null) await invoke('widget_storage_set', { widgetId: widget.id, key, value: raw });
+        localStorage.removeItem(name);
+      }
+    })();
+    legacyMoves.set(widget.id, move);
+    // A failed move is tried again on the next call.
+    move.catch(() => legacyMoves.delete(widget.id));
+  }
+  return move;
 }
 
 function mediaPayload() {

@@ -106,6 +106,29 @@ export interface LiveActivity {
   trailing?: ActivityPart;
 }
 
+/** A request sent with `network.request`. */
+export interface NetworkRequest {
+  /** `GET` (the default), `HEAD`, `POST`, `PUT`, `PATCH` or `DELETE`. */
+  method?: string;
+  /** `Host`, `Origin`, `Content-Length`, `Connection` and `Transfer-Encoding` cannot be set. */
+  headers?: Record<string, string>;
+  /** Text sent as the body, up to 16 MB. */
+  body?: string;
+}
+
+/** The answer to `network.request`. HTTP errors such as 404 are answers too; check `ok`. */
+export interface NetworkResponse {
+  status: number;
+  /** Whether `status` is 200–299. */
+  ok: boolean;
+  /** By lowercase name; repeated headers are joined with `, `. */
+  headers: Record<string, string>;
+  /** The body as text, up to 32 MB; bytes that are not UTF-8 are replaced. */
+  body: string;
+  /** The body parsed as JSON; throws when it is not JSON. */
+  json<T = unknown>(): T;
+}
+
 export class LizunError extends Error {
   readonly code: string;
 
@@ -289,10 +312,54 @@ export const activity = {
   clear: () => call<void>('activity.clear'),
 };
 
-/** Small JSON values that survive restarts, private to this widget. Needs `storage`. */
+/**
+ * JSON values that survive restarts, private to this widget and kept on this computer. Needs
+ * `storage`. Keys are up to 128 characters; a value is up to 1 MB of JSON, and a widget keeps
+ * up to 50 MB in total.
+ */
 export const storage = {
+  /** The value, or `null` when the key was never set or was removed. */
   get: <T = unknown>(key: string) => call<T | null>('storage.get', { key }),
   set: (key: string, value: unknown) => call<void>('storage.set', { key, value }),
+  remove: (key: string) => call<void>('storage.remove', { key }),
+};
+
+/**
+ * Requests that Lizun sends for the widget, to the origins in the manifest's `network` list.
+ * Unlike `fetch`, they are not limited by CORS and carry no `Origin` header, so they also reach
+ * APIs that do not allow web pages, such as an app on this computer
+ * (`http://127.0.0.1:8765`). Redirects are not followed: a 3xx answer is returned as it is.
+ * Fails with a `LizunError` when the address is not in `network`, the server cannot be
+ * reached, or the request takes longer than a minute.
+ */
+export const network = {
+  async request(url: string, request: NetworkRequest = {}): Promise<NetworkResponse> {
+    const raw = await call<{ status: number; headers: Record<string, string>; body: string }>('network.request', {
+      url,
+      ...request,
+    });
+    return { ...raw, ok: raw.status >= 200 && raw.status < 300, json: () => JSON.parse(raw.body) };
+  },
+};
+
+/** What `apps.start` did: started the program, found it running, or found it nowhere. */
+export type AppStart = 'started' | 'running' | 'notFound';
+
+/**
+ * Programs on this computer the widget works with, listed in the manifest's `apps` with the
+ * paths they may be installed at. The widget names them by id; the user sees them before
+ * installing it. Windows only for now.
+ */
+export const apps = {
+  /**
+   * Starts the program unless it is already running. With `hidden`, it starts in the
+   * background: its windows are hidden while it starts up, and Lizun asks it to close when Lizun
+   * quits if it was never shown.
+   */
+  start: (id: string, options: { hidden?: boolean } = {}) =>
+    call<AppStart>('apps.start', { id, hidden: options.hidden === true }),
+  /** Shows the running program's windows and brings it to the front; false if there is none. */
+  show: (id: string) => call<boolean>('apps.show', { id }),
 };
 
 /** Development helper: the report shows up in the island's console. */

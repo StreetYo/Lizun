@@ -50,6 +50,8 @@ export interface WidgetManifest {
   width: number;
   permissions: string[];
   network: string[];
+  /** Programs the widget may start (see src-tauri/src/widget_apps.rs). */
+  apps?: { id: string; name: string; paths: string[] }[];
   settings: SettingSpec[];
   /** Translations by language code. */
   locales?: Record<string, ManifestTexts>;

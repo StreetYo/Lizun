@@ -33,7 +33,8 @@ my-widget/
 | `entry` | HTML file to load (default `index.html`). |
 | `width` | Column width in logical pixels, 120–640 (default 240). |
 | `permissions` | `media:read`, `media:control`, `storage`, `activity`. Anything else is rejected. |
-| `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed). Empty means no network. |
+| `network` | Origins the widget may reach: `https://host[:port]` (`*.` allowed), or `http://127.0.0.1:port` and `http://localhost:port` for a program on this computer. Empty means no network. See [Network](#network). |
+| `apps` | Programs the widget may start, see [Starting a program](#starting-a-program). |
 | `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
 | `locales` | Translations of `name`, `description` and the settings, see [Languages](#languages). |
 
@@ -60,6 +61,101 @@ await storage.set('count', count + 1);
 
 Calls without the needed permission reject with a `LizunError` whose `code` is
 `permission_denied`. Types are in `packages/widget-sdk/src/index.ts`.
+
+## Storage
+
+With the `storage` permission a widget keeps JSON values that survive restarts and updates:
+
+```js
+import { storage } from '/__sdk/index.js';
+
+await storage.set('deck', { name: 'Words', cards: [] });
+const deck = await storage.get('deck'); // null when never set
+await storage.remove('deck');
+```
+
+Keys are up to 128 characters. A value is up to 1 MB of JSON and a widget keeps up to 50 MB in
+total; a `set` past either limit rejects with a `LizunError`. Data that can grow, such as a list
+of thousands of items, is best split over several keys, so that a change rewrites only one of
+them.
+
+Values are files in `%APPDATA%\app.lizun.desktop\widget-data\<id>\`, on this computer only.
+Removing a widget keeps them for a later reinstall. Earlier Lizun builds kept them in the
+island's `localStorage`; they move to files before the widget's first storage call.
+
+## Network
+
+A widget reaches only the origins in its manifest's `network` list, which the user sees before
+installing. It can use `fetch`, which works like in a browser: the iframe's origin is opaque, so
+the server has to allow any origin with CORS. Or it can ask Lizun to send the request with
+`network.request`, which is not limited by CORS and sends no `Origin` header, so it also
+reaches APIs made for apps, such as an app on this computer:
+
+```js
+import { network } from '/__sdk/index.js';
+
+const response = await network.request('http://127.0.0.1:8765', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ action: 'version', version: 6 }),
+});
+if (response.ok) console.log(response.json());
+```
+
+- `method` is `GET` (the default), `HEAD`, `POST`, `PUT`, `PATCH` or `DELETE`; `headers` cannot
+  set `Host`, `Origin`, `Content-Length`, `Connection` or `Transfer-Encoding`.
+- The body goes and comes back as text: up to 16 MB out and 32 MB back. The answer has
+  `status`, `ok`, `headers` (by lowercase name), `body` and `json()`.
+- Redirects are not followed, so a 3xx answer comes back as it is; a request takes at most a
+  minute.
+- An HTTP error such as 404 is an answer; the call rejects with a `LizunError` only when the
+  address is not in `network`, the server cannot be reached, the time runs out or the widget
+  already has four requests in flight.
+
+Plain HTTP is allowed only to `127.0.0.1` and `localhost`, with a port. Settings show such an
+origin as talking to a program on this computer. Ports where a debugger, Docker or Lizun itself
+listens (2375, 2376, 6869, 9222, 9229 and Lizun's browser extension port) are refused. Why it
+works this way is in [ADR 0010](adr/0010-widget-network-and-storage.md).
+
+## Starting a program
+
+A widget that works with a program on this computer, such as Anki, can start it. The manifest
+lists the program with the paths it may be installed at, tried in order:
+
+```json
+{
+  "apps": [
+    {
+      "id": "anki",
+      "name": "Anki",
+      "paths": ["%LOCALAPPDATA%\\Programs\\Anki\\anki.exe", "%PROGRAMFILES%\\Anki\\anki.exe"]
+    }
+  ]
+}
+```
+
+A path is an `.exe` under `%LOCALAPPDATA%`, `%APPDATA%`, `%PROGRAMFILES%`, `%PROGRAMFILES(X86)%`
+or a drive letter, without `..`, other variables or arguments; up to four programs and eight
+paths each. Settings show "Starts Anki" with the widget's permissions.
+
+```js
+import { apps } from '/__sdk/index.js';
+
+const result = await apps.start('anki', { hidden: true }); // 'started', 'running' or 'notFound'
+await apps.show('anki'); // shows its window and brings it to the front; false if there is none
+```
+
+- A program that is already running is not started again.
+- With `hidden`, it starts in the background: its windows are hidden while it starts up (the
+  first 30 seconds), so it has no window or taskbar button. Opening it by hand later, or
+  `apps.show`, shows it.
+- When Lizun quits, a program it started in the background that was never shown is asked to
+  close, as if its close button had been pressed.
+- Windows only for now; elsewhere `apps.start` rejects.
+
+Start a program when the user needs it, for example when the widget loads and is set to use it,
+not on every pointer move: someone who closed it by hand expects it to stay closed. Why it works
+this way is in [ADR 0011](adr/0011-widgets-starting-apps.md).
 
 ## Settings
 
@@ -279,7 +375,8 @@ back. Why the island works this way is in [ADR 0003](adr/0003-keyboard-on-demand
 
 The iframe has an opaque origin, so a widget cannot read the island page, cookies or
 `localStorage`, or call the Tauri backend. Scripts may only come from the widget's own folder
-and `/__sdk/`; inline scripts are blocked. Network requests are limited to `network`.
+and `/__sdk/`; inline scripts are blocked. Network requests, by `fetch` or `network.request`,
+are limited to `network`.
 
 ## Installing
 
@@ -331,6 +428,8 @@ fixed version, publish releases and share the release link, and raise `version` 
 manifest with each one: Settings shows it, and an update shows which version it replaces.
 
 Widgets from private repositories cannot be installed.
+
+To let others find your widget, add it to the [widget catalog](widget-catalog.md).
 
 Widgets that ship with Lizun live in `apps/desktop/bundled-widgets/` and are copied into the
 app's resources. They use the same SDK and sandbox as installed widgets and are listed with the
