@@ -34,3 +34,6 @@ desktop.ini
 
 # Local reference recordings, not part of the repository
 /*.webm
+
+# Local tool for recording the README demo GIF, not part of the repository
+/scripts/demo/

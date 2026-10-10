@@ -4,6 +4,8 @@ An open-source "dynamic island" for the desktop: a black island at the top of th
 opens on hover and holds widgets: now playing, a file tray, a calendar, a camera mirror, a to-do
 list, and widgets anyone can write and install.
 
+![Lizun: the island opens on hover, a task is added in the To-do widget, widgets are rearranged, the clipboard history is shown and files are dropped into the tray](https://raw.githubusercontent.com/StreetYo/Lizun/master/docs/media/lizun-demo.gif)
+
 > Status: early prototype. Windows works; macOS is planned (see [ADR 0001](docs/adr/0001-stack.md)).
 
 ## What works today (Windows)
