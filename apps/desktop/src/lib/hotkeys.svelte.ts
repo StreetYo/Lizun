@@ -9,7 +9,7 @@ import { invoke, listen } from './platform';
 import type { HotkeyAction } from './preferences.svelte';
 
 /** Why the core refuses a shortcut (see `Refusal` in src-tauri/src/hotkeys.rs). */
-export type Refusal = 'key' | 'modifier' | 'oneModifier' | 'altGr' | 'system' | 'apps';
+export type Refusal = 'key' | 'modifier' | 'oneModifier' | 'altGr' | 'system' | 'apps' | 'numLock';
 
 class HotkeyStatus {
   /** Actions whose shortcut another app or Windows already has. */

@@ -28,6 +28,9 @@ app, so a careless one breaks typing or Windows itself; the settings must not le
     the media keys never;
   - Ctrl+Alt (without Win) with a letter, digit or sign is refused: it is AltGr and types
     characters on many layouts;
+  - the numpad digits and point never: with Num Lock off (or Shift held) they send Insert, End,
+    the arrows and Delete, which `RegisterHotKey` cannot tell from those keys; the numpad signs
+    are fine;
   - a list of combinations Windows, graphics drivers and Remote Desktop keep is refused (Win+Shift+S,
     virtual desktops, Ctrl+Alt+arrows, Ctrl+Alt+End, Win+Ctrl+Shift+B, the Copilot and Office
     keys…), and Ctrl+Shift+T/N/Z/V, which nearly every app uses;

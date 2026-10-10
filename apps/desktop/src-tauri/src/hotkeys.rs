@@ -94,7 +94,8 @@ pub struct Shortcut {
 
 /// Keyboard keys a shortcut can use, by their `KeyboardEvent.code` names. Escape, Tab, Enter,
 /// Backspace, Delete, the lock keys, Print Screen, Pause, the menu key and the media keys are
-/// missing on purpose: Windows and apps need them with any modifier.
+/// missing on purpose: Windows and apps need them with any modifier. The numpad digits are here
+/// so that `check` can say why they are refused.
 const KEYS: &[&str] = &[
     "KeyA", "KeyB", "KeyC", "KeyD", "KeyE", "KeyF", "KeyG", "KeyH", "KeyI", "KeyJ", "KeyK", "KeyL", "KeyM",
     "KeyN", "KeyO", "KeyP", "KeyQ", "KeyR", "KeyS", "KeyT", "KeyU", "KeyV", "KeyW", "KeyX", "KeyY", "KeyZ",
@@ -179,6 +180,10 @@ pub enum Refusal {
     System,
     /// A combination nearly every app uses, such as Ctrl+Shift+Z.
     Apps,
+    /// A numpad digit or the numpad point. With Num Lock off they send the keys of Insert, End,
+    /// the arrows and Delete, which a registered shortcut cannot tell from those keys, so the
+    /// shortcut would work only with Num Lock on (and never with Shift, which turns it off).
+    NumLock,
 }
 
 /// The keys that type a character, which AltGr (Ctrl+Alt) changes on many layouts.
@@ -190,6 +195,12 @@ fn types_character(code: &str) -> bool {
             "Minus" | "Equal" | "BracketLeft" | "BracketRight" | "Backslash" | "Semicolon" | "Quote" | "Backquote"
                 | "Comma" | "Period" | "Slash" | "IntlBackslash"
         )
+}
+
+/// The numpad keys that Num Lock changes: the digits and the point.
+fn depends_on_num_lock(code: &str) -> bool {
+    let digit = code.strip_prefix("Numpad").is_some_and(|n| n.len() == 1 && n.as_bytes()[0].is_ascii_digit());
+    digit || code == "NumpadDecimal"
 }
 
 /// F13–F24, which keyboards do not have but macro keypads and mouse software send.
@@ -205,6 +216,9 @@ pub fn check(shortcut: &Shortcut) -> Result<(), Refusal> {
         Key::Keyboard(code) => code,
     };
     let s = shortcut;
+    if depends_on_num_lock(code) {
+        return Err(Refusal::NumLock);
+    }
     if extra_function_key(code) {
         // The Copilot key sends Shift+Win+F23.
         return if code == "F23" && s.held(false, false, true, true) { Err(Refusal::System) } else { Ok(()) };
@@ -431,6 +445,15 @@ mod tests {
         }
         assert_eq!(checked("Ctrl+Shift+KeyZ"), Err(Refusal::Apps));
         assert_eq!(checked("Ctrl+Alt+Shift+ArrowUp"), Ok("Ctrl+Alt+Shift+ArrowUp".into()));
+    }
+
+    #[test]
+    fn refuses_keys_num_lock_changes() {
+        for text in ["Ctrl+Shift+Numpad0", "Ctrl+Alt+Numpad5", "Alt+Win+Numpad9", "Ctrl+Shift+NumpadDecimal"] {
+            assert_eq!(checked(text), Err(Refusal::NumLock), "{text}");
+        }
+        assert_eq!(checked("Ctrl+Shift+NumpadAdd"), Ok("Ctrl+Shift+NumpadAdd".into()));
+        assert_eq!(checked("Alt+Shift+NumpadDivide"), Ok("Alt+Shift+NumpadDivide".into()));
     }
 
     #[test]

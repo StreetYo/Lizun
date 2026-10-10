@@ -211,7 +211,8 @@
         "oneModifier": "Combinations with one modifier, such as Ctrl+C or Win+D, belong to Windows and apps. Add a second modifier.",
         "altGr": "Ctrl+Alt with a letter, digit or sign types characters on many keyboard layouts. Use Ctrl+Shift or Alt+Shift, or add Win.",
         "system": "Windows uses this combination.",
-        "apps": "Most apps use this combination."
+        "apps": "Most apps use this combination.",
+        "numLock": "The numpad digits and point depend on Num Lock: with it off they act as arrows, Home, End, Insert and Delete. Use another key."
       }
     },
     "widgets": {
