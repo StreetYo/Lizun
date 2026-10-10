@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::io::ErrorKind;
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::http::StatusCode;
+use tungstenite::protocol::WebSocketConfig;
 use tungstenite::{Message, WebSocket};
 
 use crate::i18n::tf;
@@ -34,6 +35,22 @@ const ACCEPT_POLL: Duration = Duration::from_millis(250);
 /// Connections wake up this often to send queued commands.
 const READ_POLL: Duration = Duration::from_millis(50);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
+// Anything local can connect, so what one connection may hold is bounded.
+/// Most connections open at once; each browser opens one.
+const MAX_CONNECTIONS: usize = 8;
+/// Most frames with media one connection reports.
+const MAX_TABS: usize = 100;
+/// Longest cover, as a data URL. Covers are usually tens of kilobytes.
+const MAX_ARTWORK_BYTES: usize = 2 * 1024 * 1024;
+/// Most bytes of covers one connection keeps for all its tabs.
+const MAX_ARTWORK_TOTAL: usize = 16 * 1024 * 1024;
+/// Largest message read: the largest cover and the JSON around it.
+const MAX_MESSAGE_BYTES: usize = MAX_ARTWORK_BYTES + 64 * 1024;
+/// Longest tab id, cover URL or text kept. Longer text is cut; longer ids and URLs are ignored.
+const MAX_TEXT_BYTES: usize = 1024;
+/// The actions the island can ask for; others are dropped.
+const ACTIONS: [&str; 4] = ["play", "pause", "next", "previous"];
 
 /// Origins the extension connects from. Web pages can open WebSockets to localhost too, so
 /// they are turned away; non-browser clients send no origin and are local programs anyway.
@@ -124,6 +141,25 @@ pub struct BrowserMedia {
     publishing: Mutex<()>,
     last_status: Mutex<Status>,
     next_connection: AtomicU64,
+    /// Connections being served, counting those still in the handshake.
+    open: Arc<AtomicUsize>,
+}
+
+/// Holds a place among the MAX_CONNECTIONS open connections until dropped.
+struct Slot(Arc<AtomicUsize>);
+
+impl Slot {
+    fn take(open: &Arc<AtomicUsize>) -> Option<Self> {
+        let taken = open.fetch_add(1, Ordering::SeqCst);
+        let slot = Slot(open.clone());
+        (taken < MAX_CONNECTIONS).then_some(slot)
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 pub fn start(app: &AppHandle, enabled: bool, port: u16) {
@@ -136,6 +172,7 @@ pub fn start(app: &AppHandle, enabled: bool, port: u16) {
         publishing: Mutex::new(()),
         last_status: Mutex::new(Status::default()),
         next_connection: AtomicU64::new(1),
+        open: Arc::new(AtomicUsize::new(0)),
     });
     app.manage(server.clone());
     if let Err(err) = thread::Builder::new().name("lizun-browser-media".into()).spawn(move || server.listen()) {
@@ -228,10 +265,15 @@ impl BrowserMedia {
             while self.generation() == config.generation {
                 match listener.accept() {
                     Ok((stream, _)) => {
+                        let Some(slot) = Slot::take(&self.open) else {
+                            log::debug!("browser media turned a connection away: {MAX_CONNECTIONS} are open");
+                            continue;
+                        };
                         let server = self.clone();
-                        let spawned = thread::Builder::new()
-                            .name("lizun-browser-connection".into())
-                            .spawn(move || server.serve(stream, config.generation));
+                        let spawned = thread::Builder::new().name("lizun-browser-connection".into()).spawn(move || {
+                            let _slot = slot;
+                            server.serve(stream, config.generation);
+                        });
                         if let Err(err) = spawned {
                             log::warn!("could not start a browser media connection: {err}");
                         }
@@ -256,13 +298,16 @@ impl BrowserMedia {
             .and_then(|()| stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT)))
             .map_err(|err| err.to_string())
             .and_then(|()| {
-                tungstenite::accept_hdr(stream, |request: &Request, response: Response| {
+                let config = WebSocketConfig::default()
+                    .max_message_size(Some(MAX_MESSAGE_BYTES))
+                    .max_frame_size(Some(MAX_MESSAGE_BYTES));
+                let callback = |request: &Request, response: Response| {
                     check_origin(request)?;
                     let user_agent = request.headers().get("user-agent").and_then(|v| v.to_str().ok());
                     browser = browser_name(user_agent.unwrap_or_default());
                     Ok(response)
-                })
-                .map_err(|err| err.to_string())
+                };
+                tungstenite::accept_hdr_with_config(stream, callback, Some(config)).map_err(|err| err.to_string())
             });
         let mut socket = match socket {
             Ok(socket) => socket,
@@ -401,31 +446,54 @@ impl Tabs {
         match message {
             Incoming::Hello { protocol, version } => {
                 if protocol != PROTOCOL {
+                    let version: String = version.chars().take(32).collect();
                     log::warn!("browser extension {version} speaks protocol {protocol}, Lizun {PROTOCOL}");
                 }
                 false
             }
-            Incoming::Player { id, player } => match self.tabs.get_mut(&id) {
-                Some(tab) => {
-                    if tab.state.artwork_url != player.artwork_url {
-                        tab.artwork = None;
+            Incoming::Player { id, mut player } => {
+                if id.len() > MAX_TEXT_BYTES {
+                    return false;
+                }
+                player.clip();
+                let full = self.tabs.len() >= MAX_TABS;
+                match self.tabs.get_mut(&id) {
+                    Some(tab) => {
+                        if tab.state.artwork_url != player.artwork_url {
+                            tab.artwork = None;
+                        }
+                        tab.state = player;
+                        true
                     }
-                    tab.state = player;
-                    true
+                    None if full => {
+                        log::debug!("ignoring a browser tab: {MAX_TABS} tabs are playing already");
+                        false
+                    }
+                    None => {
+                        self.tabs.insert(id, Tab { state: player, artwork: None });
+                        true
+                    }
                 }
-                None => {
-                    self.tabs.insert(id, Tab { state: player, artwork: None });
-                    true
-                }
-            },
+            }
             Incoming::Artwork { id, url, data } => {
+                if !data.starts_with("data:image/") || data.len() > MAX_ARTWORK_BYTES {
+                    return false;
+                }
+                let others: usize = self
+                    .tabs
+                    .iter()
+                    .filter(|(other, _)| **other != id)
+                    .filter_map(|(_, tab)| tab.artwork.as_ref())
+                    .map(|artwork| artwork.data_url.len())
+                    .sum();
+                if others + data.len() > MAX_ARTWORK_TOTAL {
+                    log::debug!("ignoring a browser tab's cover: the covers of the other tabs take enough memory");
+                    return false;
+                }
                 // Covers arrive after the track and may be late for a track that has moved on.
                 let Some(tab) = self.tabs.get_mut(&id).filter(|tab| tab.state.artwork_url.as_deref() == Some(&url)) else {
                     return false;
                 };
-                if !data.starts_with("data:image/") {
-                    return false;
-                }
                 tab.artwork = Some(Arc::new(Artwork::from_data_url(data)));
                 true
             }
@@ -448,6 +516,26 @@ impl Tabs {
         // A stable order, so an unchanged set of tabs compares equal.
         players.sort_by(|a, b| a.id.cmp(&b.id));
         players
+    }
+}
+
+impl TabState {
+    /// Cuts what nobody reads in full, so a tab holds little whatever the extension sends.
+    fn clip(&mut self) {
+        for text in [&mut self.site, &mut self.title, &mut self.artist, &mut self.album] {
+            if text.len() > MAX_TEXT_BYTES {
+                let mut end = MAX_TEXT_BYTES;
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                text.truncate(end);
+            }
+        }
+        if self.artwork_url.as_ref().is_some_and(|url| url.len() > MAX_TEXT_BYTES) {
+            self.artwork_url = None;
+        }
+        self.actions =
+            ACTIONS.iter().filter(|action| self.actions.iter().any(|a| a == *action)).map(|a| a.to_string()).collect();
     }
 }
 
@@ -601,5 +689,62 @@ mod tests {
         assert_eq!(browser_name(yandex), "Yandex Browser");
         assert_eq!(browser_name("Mozilla/5.0 Gecko/20100101 Firefox/141.0"), "Firefox");
         assert_eq!(browser_name(""), "Browser");
+    }
+
+    fn player_message(id: &str, title: &str, artwork_url: &str) -> String {
+        serde_json::json!({
+            "type": "player",
+            "id": id,
+            "player": {
+                "site": "example.com", "title": title, "artworkUrl": artwork_url, "playing": true,
+                "position": null, "duration": null, "sampledAt": 1, "actions": ["play", "pause", "play", "seek", "x"],
+            },
+        })
+        .to_string()
+    }
+
+    fn artwork_message(id: &str, url: &str, bytes: usize) -> String {
+        let data = format!("data:image/png;base64,{}", "A".repeat(bytes - 22));
+        serde_json::json!({ "type": "artwork", "id": id, "url": url, "data": data }).to_string()
+    }
+
+    #[test]
+    fn bounds_what_one_connection_holds() {
+        let mut tabs = Tabs::default();
+        assert!(tabs.handle(&player_message("1:0", &"ü".repeat(MAX_TEXT_BYTES), "u")));
+        let state = &tabs.tabs["1:0"].state;
+        assert!(state.title.len() <= MAX_TEXT_BYTES && state.title.chars().all(|c| c == 'ü'));
+        assert_eq!(state.actions, ["play", "pause"]);
+        assert!(!tabs.handle(&player_message(&"1".repeat(MAX_TEXT_BYTES + 1), "Long id", "u")));
+        tabs.handle(&player_message("1:1", "Long cover URL", &"u".repeat(MAX_TEXT_BYTES + 1)));
+        assert_eq!(tabs.tabs["1:1"].state.artwork_url, None);
+
+        // Two tabs are there already.
+        for i in 2..MAX_TABS {
+            assert!(tabs.handle(&player_message(&format!("2:{i}"), "Song", "u")));
+        }
+        assert!(!tabs.handle(&player_message("3:0", "One too many", "u")));
+        assert!(tabs.handle(&player_message("2:2", "A known tab still changes", "u")));
+
+        assert!(!tabs.handle(&artwork_message("1:0", "u", MAX_ARTWORK_BYTES + 1)));
+        let per_tab = MAX_ARTWORK_BYTES;
+        let fit = MAX_ARTWORK_TOTAL / per_tab;
+        for i in 0..fit {
+            assert!(tabs.handle(&artwork_message(&format!("2:{}", i + 2), "u", per_tab)), "cover {i}");
+        }
+        assert!(!tabs.handle(&artwork_message(&format!("2:{}", fit + 2), "u", per_tab)));
+        // Replacing a tab's own cover does not count the old one.
+        assert!(tabs.handle(&artwork_message("2:2", "u", per_tab)));
+    }
+
+    #[test]
+    fn limits_open_connections() {
+        let open = Arc::new(AtomicUsize::new(0));
+        let slots: Vec<Slot> = (0..MAX_CONNECTIONS).map(|_| Slot::take(&open).unwrap()).collect();
+        assert!(Slot::take(&open).is_none());
+        assert_eq!(open.load(Ordering::SeqCst), MAX_CONNECTIONS);
+        drop(slots);
+        assert_eq!(open.load(Ordering::SeqCst), 0);
+        assert!(Slot::take(&open).is_some());
     }
 }

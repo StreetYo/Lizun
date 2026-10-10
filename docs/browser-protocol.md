@@ -15,6 +15,11 @@ the app over a WebSocket. This document is the contract between the two.
   and are let in.
 - If the port is taken, the app keeps running, shows the error in Settings and retries every
   5 s.
+- Since any local program can connect, the app bounds what a connection may hold: at most 8
+  connections at once, messages of up to 2 MiB + 64 KiB, 100 frames with media per connection
+  (players of further frames are ignored), covers of up to 2 MiB as a data URL and 16 MiB of
+  covers per connection. Ids and cover URLs longer than 1 KiB are ignored, titles, artists,
+  albums and sites are cut to 1 KiB, and only the actions the app uses are kept.
 
 Every message is one JSON text frame with a `type`. Unknown types and fields are ignored, so
 either side can add messages without breaking the other.

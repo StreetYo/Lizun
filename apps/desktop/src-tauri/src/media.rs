@@ -3,7 +3,7 @@
 //! extension (`browser`). Each source reports every player it sees, and one of them is picked for
 //! the island; the UI reads it through events and commands.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
@@ -202,15 +202,15 @@ impl Arbiter {
     /// seen twice, as the tab and as the browser's system session; the tab has the page's own
     /// cover and controls, so the session is left out.
     fn candidates(&self) -> impl Iterator<Item = &Tracked> {
-        self.players.iter().filter(|t| {
-            t.source == Source::Browser || {
-                let title = normalize(&t.player.info.title);
-                !self
-                    .players
-                    .iter()
-                    .any(|tab| tab.source == Source::Browser && normalize(&tab.player.info.title) == title)
-            }
-        })
+        let tabs: HashSet<String> = self
+            .players
+            .iter()
+            .filter(|tab| tab.source == Source::Browser)
+            .map(|tab| normalize(&tab.player.info.title))
+            .collect();
+        self.players
+            .iter()
+            .filter(move |t| t.source == Source::Browser || !tabs.contains(&normalize(&t.player.info.title)))
     }
 
     /// Every player that can be shown, in a stable order.
