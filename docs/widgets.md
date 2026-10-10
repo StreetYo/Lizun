@@ -427,7 +427,7 @@ Lizun remembers where each widget was installed from (in `widget-sources.json` n
 `widgets` folder): the GitHub repository, whatever the branch, release or folder in the link,
 or "this computer" for an archive or a folder. When a widget comes from somewhere else than the
 widget Lizun had with that id, installed or removed, it may be by another author, so the
-confirmation says so, and installing it resets the settings saved for the earlier widget. The
+confirmation says so, and installing it deletes the settings and data saved for the earlier widget. The
 same happens when Lizun does not know the earlier widget's source, for example because it was
 copied in by hand.
 

@@ -153,11 +153,12 @@ fn source_changed(recorded: Option<&str>, source: &str, seen_before: bool) -> bo
 #[tauri::command]
 pub async fn widgets_install_confirm(app: AppHandle, token: u64) -> Result<Vec<InstalledWidget>, String> {
     let staged = take_pending(&app, token).ok_or_else(|| t("install.notWaiting"))?;
-    // The settings go before the widget comes in, so it never sees the earlier widget's values.
-    // The source is recorded last: if anything fails, the next install of this id still counts
-    // as a change.
+    // The settings and the stored data go before the widget comes in, so it never sees the
+    // earlier widget's values. The source is recorded last: if anything fails, the next install
+    // of this id still counts as a change.
     if staged.source_changed {
         crate::widget_settings::forget(&app, &staged.manifest.id, &staged.manifest.settings)?;
+        crate::widget_storage::forget(&app, &staged.manifest.id)?;
     }
     let (id, source) = (staged.manifest.id.clone(), staged.source.clone());
     let target_app = app.clone();

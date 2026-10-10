@@ -49,6 +49,17 @@ pub fn widget_storage_remove(app: AppHandle, widget_id: String, key: String) -> 
     remove(&dir, &key)
 }
 
+/// Deletes everything a widget kept, when a widget from another source takes its id (see
+/// `widget_install.rs`), so the newcomer cannot read it. The id comes from a validated
+/// manifest, so it is a plain folder name.
+pub fn forget<R: Runtime>(app: &AppHandle<R>, widget_id: &str) -> Result<(), String> {
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    match fs::remove_dir_all(data.join(DIR_NAME).join(widget_id)) {
+        Err(err) if err.kind() != io::ErrorKind::NotFound => Err(err.to_string()),
+        _ => Ok(()),
+    }
+}
+
 fn widget_dir<R: Runtime>(app: &AppHandle<R>, widget_id: &str) -> Result<PathBuf, String> {
     // Only ids of loaded widgets, which are checked to be safe folder names.
     crate::widgets::find(app, widget_id).ok_or("unknown widget")?;

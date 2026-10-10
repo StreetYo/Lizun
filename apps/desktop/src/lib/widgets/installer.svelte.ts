@@ -61,6 +61,10 @@ export class WidgetInstaller {
     this.busy = 'installing';
     this.error = null;
     try {
+      // The core deletes the earlier widget's settings and data; values still waiting in
+      // localStorage to move to the core (see moveLegacyValues in host.ts) go too, by the
+      // same rule, so the newcomer cannot pick them up.
+      if (pending.sourceChanged) forgetLegacyStorage(pending.manifest.id);
       const widgets = await invoke<WidgetManifest[]>('widgets_install_confirm', { token: pending.token });
       const { name, version } = localized(pending.manifest);
       this.done = pending.replaces
@@ -80,5 +84,16 @@ export class WidgetInstaller {
     if (!this.pending) return;
     invoke('widgets_install_cancel', { token: this.pending.token }).catch(() => {});
     this.pending = null;
+  }
+}
+
+function forgetLegacyStorage(id: string): void {
+  try {
+    const prefix = `lizun.widget.${id}.`;
+    for (const name of Object.keys(localStorage)) {
+      if (name.startsWith(prefix) && !name.slice(prefix.length).includes('.')) localStorage.removeItem(name);
+    }
+  } catch {
+    // Storage can be unavailable; then there is nothing to move either.
   }
 }
