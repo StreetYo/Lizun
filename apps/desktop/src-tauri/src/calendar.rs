@@ -380,9 +380,32 @@ fn describe(err: ureq::Error) -> String {
         ureq::Error::StatusCode(code) => tf("calendar.errors.httpError", &[("code", &code)]),
         ureq::Error::BodyExceedsLimit(_) => too_large(),
         err => {
-            log::warn!("could not download the calendar feed: {err}");
+            log::warn!("could not download the calendar feed: {}", without_link(&err));
             t("calendar.errors.unreachable")
         }
+    }
+}
+
+/// What went wrong, for the log. Some errors quote the URL, which is the secret link, so only
+/// those known not to are written out.
+fn without_link(err: &ureq::Error) -> String {
+    match err {
+        ureq::Error::Io(err) => format!("io: {:?}", err.kind()),
+        ureq::Error::Timeout(_)
+        | ureq::Error::HostNotFound
+        | ureq::Error::ConnectionFailed
+        | ureq::Error::Tls(_)
+        | ureq::Error::NativeTls(_)
+        | ureq::Error::Der(_)
+        | ureq::Error::TlsRequired
+        | ureq::Error::TooManyRedirects
+        | ureq::Error::RedirectFailed
+        | ureq::Error::LargeResponseHeader(..)
+        | ureq::Error::BodyStalled => err.to_string(),
+        ureq::Error::BadUri(_) => "the link is not a valid URL".into(),
+        // A redirect's Location header can be quoted.
+        ureq::Error::Protocol(_) => "HTTP protocol error".into(),
+        _ => "unexpected error".into(),
     }
 }
 
@@ -453,6 +476,22 @@ mod tests {
             assert!(!may_fall_back_to_http(remote, &refused), "{remote}");
             assert!(!may_fall_back_to_http(remote, &certificate), "{remote}");
         }
+    }
+
+    #[test]
+    fn logs_errors_without_the_link() {
+        let secret = "calendar.google.com/calendar/ical/secret%40group/private-0123/basic.ics";
+        let errors = [
+            ureq::Error::BadUri(format!("https://{secret}")),
+            ureq::Error::RequireHttpsOnly(format!("http://{secret}")),
+            ureq::Error::Io(std::io::Error::other(format!("https://{secret}"))),
+            fetch(&format!("https://exa mple.com/{secret}")).unwrap_err(),
+        ];
+        for err in &errors {
+            let logged = without_link(err);
+            assert!(!logged.contains("private-0123"), "{logged}");
+        }
+        assert_eq!(without_link(&ureq::Error::ConnectionFailed), "connection failed");
     }
 
     #[test]
