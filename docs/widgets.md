@@ -318,6 +318,14 @@ right away. Installing a widget whose id is already installed replaces it (the b
 Update); its settings and stored data are kept. The trash button next to an installed widget
 removes it, also keeping its settings and data for a later reinstall.
 
+Lizun remembers where each widget was installed from (in `widget-sources.json` next to the
+`widgets` folder): the GitHub repository, whatever the branch, release or folder in the link,
+or "this computer" for an archive or a folder. When a widget comes from somewhere else than the
+widget Lizun had with that id, installed or removed, it may be by another author, so the
+confirmation says so, and installing it resets the settings saved for the earlier widget. The
+same happens when Lizun does not know the earlier widget's source, for example because it was
+copied in by hand.
+
 Copying a widget folder into `%APPDATA%\app.lizun.desktop\widgets\` by hand and pressing Reload
 works too, without the checks before installing. In development builds, widgets in the
 repository's `widgets/` folder are loaded as well.

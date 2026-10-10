@@ -384,6 +384,20 @@ pub fn values_of(app: &AppHandle, widget_id: &str) -> Values {
     resolve(&settings, app.state::<Store>().0.lock().unwrap().get(widget_id))
 }
 
+/// Whether the user has changed any setting of this widget, installed or not.
+pub fn has_values(app: &AppHandle, widget_id: &str) -> bool {
+    app.state::<Store>().0.lock().unwrap().contains_key(widget_id)
+}
+
+/// Forgets a widget's values, if it has any, when a widget from another source takes its id;
+/// `settings` are the new widget's, whose defaults are announced.
+pub fn forget(app: &AppHandle, widget_id: &str, settings: &[SettingSpec]) -> Result<(), String> {
+    if !has_values(app, widget_id) {
+        return Ok(());
+    }
+    commit(app, &app.state::<Store>(), widget_id, None, &resolve(settings, None))
+}
+
 /// Settings of the built-in widgets that have any, by widget id.
 #[tauri::command]
 pub fn widget_settings_built_in() -> HashMap<&'static str, Vec<SettingSpec>> {

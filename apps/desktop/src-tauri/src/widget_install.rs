@@ -5,7 +5,12 @@
 //! show what the widget asks for. `widgets_install_confirm` moves it into the widgets folder,
 //! replacing an installed widget with the same id. A widget reaches the widgets folder only
 //! after it passed validation and the user agreed.
+//!
+//! Lizun records where each widget was installed from. A widget from another source that uses
+//! an id Lizun has seen before is shown with a warning, and its settings start from the defaults,
+//! so it cannot take over another widget's place and read what the user entered for that one.
 
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{self, Cursor, Read};
 use std::path::{Component, Path, PathBuf};
@@ -29,6 +34,10 @@ const MAX_WIDGET_FILES: usize = 2_000;
 /// Folder in the app data folder for widgets on their way in or out. It is on the same drive
 /// as the widgets folder, so moving between them is a rename.
 const STAGING_DIR: &str = "widget-staging";
+/// File in the app data folder with the source of every widget installed through Lizun.
+const SOURCES_FILE: &str = "widget-sources.json";
+/// Source of a widget installed from a zip archive or a folder on this computer.
+const LOCAL_SOURCE: &str = "local";
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -49,6 +58,11 @@ pub struct PendingInstall {
     origin: String,
     /// Version of the installed widget this one replaces.
     replaces: Option<String>,
+    /// Where a widget with this id was installed from before, if Lizun knows.
+    previous_source: Option<String>,
+    /// The widget comes from another source than the one Lizun had with its id, or Lizun had the
+    /// id but does not know its source; its settings are reset when it is installed.
+    source_changed: bool,
 }
 
 struct Staged {
@@ -56,6 +70,8 @@ struct Staged {
     /// `<staging>/<token>`; the widget itself is in its `widget` subfolder.
     dir: PathBuf,
     manifest: WidgetManifest,
+    source: String,
+    source_changed: bool,
 }
 
 impl Staged {
@@ -68,10 +84,23 @@ impl Staged {
 struct Installer {
     pending: Mutex<Option<Staged>>,
     next_token: AtomicU64,
+    /// Where each widget was installed from, by id: `github.com/<owner>/<repo>` or `local`.
+    /// Entries stay when a widget is removed, like its settings, so a reinstall from somewhere
+    /// else is noticed too.
+    sources: Mutex<BTreeMap<String, String>>,
 }
 
 pub fn init(app: &AppHandle) {
-    app.manage(Installer::default());
+    let sources = sources_path(app)
+        .and_then(|path| fs::read_to_string(path).ok())
+        .map(|text| {
+            serde_json::from_str(&text).unwrap_or_else(|err| {
+                log::warn!("ignoring unreadable {SOURCES_FILE}: {err}");
+                BTreeMap::new()
+            })
+        })
+        .unwrap_or_default();
+    app.manage(Installer { sources: Mutex::new(sources), ..Installer::default() });
     // Leftovers of installs that were never confirmed, or of a removal that was interrupted.
     if let Some(staging) = staging_root(app) {
         remove_quietly(&staging);
@@ -85,7 +114,7 @@ pub async fn widgets_install_prepare(app: AppHandle, source: InstallSource) -> R
     let dir = staging_root(&app).ok_or("no app data folder")?.join(token.to_string());
 
     let staging = dir.clone();
-    let (manifest, origin) = tauri::async_runtime::spawn_blocking(move || stage(&source, &staging))
+    let (manifest, origin, source) = tauri::async_runtime::spawn_blocking(move || stage(&source, &staging))
         .await
         .map_err(|e| e.to_string())?
         .inspect_err(|_| remove_quietly(&dir))?;
@@ -100,21 +129,44 @@ pub async fn widgets_install_prepare(app: AppHandle, source: InstallSource) -> R
         }
     };
 
-    let staged = Staged { token, dir, manifest: manifest.clone() };
+    let previous_source = installer.sources.lock().unwrap().get(&manifest.id).cloned();
+    let seen_before = replaces.is_some() || crate::widget_settings::has_values(&app, &manifest.id);
+    let source_changed = source_changed(previous_source.as_deref(), &source, seen_before);
+
+    let staged = Staged { token, dir, manifest: manifest.clone(), source, source_changed };
     if let Some(previous) = installer.pending.lock().unwrap().replace(staged) {
         previous.discard();
     }
-    Ok(PendingInstall { token, manifest, origin, replaces })
+    Ok(PendingInstall { token, manifest, origin, replaces, previous_source, source_changed })
+}
+
+/// Whether a widget from `source` differs from what Lizun had under its id: another recorded
+/// source, or none recorded for an id that is installed or has settings (a widget copied in by
+/// hand, or installed before sources were recorded).
+fn source_changed(recorded: Option<&str>, source: &str, seen_before: bool) -> bool {
+    match recorded {
+        Some(recorded) => recorded != source,
+        None => seen_before,
+    }
 }
 
 #[tauri::command]
 pub async fn widgets_install_confirm(app: AppHandle, token: u64) -> Result<Vec<InstalledWidget>, String> {
     let staged = take_pending(&app, token).ok_or_else(|| t("install.notWaiting"))?;
+    // The settings go before the widget comes in, so it never sees the earlier widget's values.
+    // The source is recorded last: if anything fails, the next install of this id still counts
+    // as a change.
+    if staged.source_changed {
+        crate::widget_settings::forget(&app, &staged.manifest.id, &staged.manifest.settings)?;
+    }
+    let (id, source) = (staged.manifest.id.clone(), staged.source.clone());
     let target_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || install(&target_app, staged))
         .await
         .map_err(|e| e.to_string())??;
-    Ok(widgets::reload(&app))
+    let widgets = widgets::reload(&app);
+    record_source(&app, &id, source)?;
+    Ok(widgets)
 }
 
 #[tauri::command]
@@ -146,6 +198,22 @@ pub async fn widgets_uninstall(app: AppHandle, id: String) -> Result<Vec<Install
     Ok(widgets::reload(&app))
 }
 
+fn record_source(app: &AppHandle, id: &str, source: String) -> Result<(), String> {
+    let installer = app.state::<Installer>();
+    let mut sources = installer.sources.lock().unwrap();
+    let mut next = sources.clone();
+    next.insert(id.to_string(), source);
+    let path = sources_path(app).ok_or("no app data folder")?;
+    let json = serde_json::to_string_pretty(&next).map_err(|e| e.to_string())?;
+    fs::write(&path, json).map_err(|e| e.to_string())?;
+    *sources = next;
+    Ok(())
+}
+
+fn sources_path<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|dir| dir.join(SOURCES_FILE))
+}
+
 fn take_pending<R: Runtime>(app: &AppHandle<R>, token: u64) -> Option<Staged> {
     let installer = app.state::<Installer>();
     let mut pending = installer.pending.lock().unwrap();
@@ -156,15 +224,18 @@ fn staging_root<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     app.path().app_data_dir().ok().map(|dir| dir.join(STAGING_DIR))
 }
 
-/// Puts the widget from `source` into `<dir>/widget` and validates it there.
-fn stage(source: &InstallSource, dir: &Path) -> Result<(WidgetManifest, String), String> {
+/// Puts the widget from `source` into `<dir>/widget` and validates it there. Returns its
+/// manifest, the link or path it came from for display, and its source for the record.
+fn stage(source: &InstallSource, dir: &Path) -> Result<(WidgetManifest, String, String), String> {
     let widget_dir = dir.join("widget");
     fs::create_dir_all(&widget_dir).map_err(|e| e.to_string())?;
+    let mut recorded = LOCAL_SOURCE.to_string();
     let origin = match source {
         InstallSource::Github { url } => {
             let link = GitHubLink::parse(url)?;
             let archive = download(&link.archive_url())?;
             unpack(&archive, link.folder.as_deref(), &widget_dir)?;
+            recorded = link.source();
             link.origin
         }
         InstallSource::Path { path } if path.is_dir() => {
@@ -184,7 +255,7 @@ fn stage(source: &InstallSource, dir: &Path) -> Result<(WidgetManifest, String),
     if !widget_dir.join(&manifest.entry).is_file() {
         return Err(tf("install.noEntry", &[("entry", &manifest.entry)]));
     }
-    Ok((manifest, origin))
+    Ok((manifest, origin, recorded))
 }
 
 /// Moves a staged widget into `<widgets>/<id>`, replacing the installed copy if there is one.
@@ -305,6 +376,12 @@ impl GitHubLink {
         };
         let origin = format!("github.com/{owner}/{repo}{}", rest.iter().map(|s| format!("/{s}")).collect::<String>());
         Ok(Self { owner: owner.clone(), repo: repo.to_string(), target, origin, folder })
+    }
+
+    /// The repository, which is what the author controls: `github.com/<owner>/<repo>`, in lower
+    /// case as GitHub compares names.
+    fn source(&self) -> String {
+        format!("github.com/{}/{}", self.owner, self.repo).to_ascii_lowercase()
     }
 
     fn archive_url(&self) -> String {
@@ -495,6 +572,8 @@ mod tests {
         let release = link("https://github.com/someone/clock/releases/tag/v1.2.0");
         assert_eq!(release.archive_url(), "https://github.com/someone/clock/archive/v1.2.0.zip");
 
+        assert_eq!(link("https://github.com/SomeOne/Widgets/tree/main/clock").source(), "github.com/someone/widgets");
+
         let asset = link("https://github.com/someone/clock/releases/download/v1.2.0/clock.zip");
         assert_eq!(asset.archive_url(), "https://github.com/someone/clock/releases/download/v1.2.0/clock.zip");
         assert!(GitHubLink::parse("https://github.com/someone/clock/releases/latest/download/clock.zip").is_ok());
@@ -513,6 +592,17 @@ mod tests {
         ] {
             assert!(GitHubLink::parse(bad).is_err(), "{bad} should be rejected");
         }
+    }
+
+    #[test]
+    fn notices_a_widget_from_another_source() {
+        let repo = "github.com/someone/clock";
+        assert!(!source_changed(Some(repo), repo, true));
+        assert!(source_changed(Some(repo), "github.com/other/clock", true));
+        assert!(source_changed(Some(repo), LOCAL_SOURCE, false));
+        // Nothing recorded: a change only if the id was installed or has settings.
+        assert!(source_changed(None, repo, true));
+        assert!(!source_changed(None, repo, false));
     }
 
     fn names(list: &[&str]) -> Vec<Option<PathBuf>> {
@@ -572,7 +662,7 @@ mod tests {
         let hello = crate::widgets::repo_path("widgets/hello");
         let dir = temp_dir("stage-folder");
         let source = InstallSource::Path { path: hello.clone() };
-        let (manifest, _) = stage(&source, &dir).unwrap();
+        let (manifest, _, _) = stage(&source, &dir).unwrap();
         assert_eq!(manifest.id, "dev.lizun.hello");
         assert!(dir.join("widget/main.js").is_file());
         fs::remove_dir_all(&dir).unwrap();
@@ -587,7 +677,7 @@ mod tests {
         let archive_path = temp_dir("hello").with_extension("zip");
         fs::write(&archive_path, zip(&entries)).unwrap();
         let dir = temp_dir("stage-zip");
-        let (manifest, _) = stage(&InstallSource::Path { path: archive_path.clone() }, &dir).unwrap();
+        let (manifest, _, _) = stage(&InstallSource::Path { path: archive_path.clone() }, &dir).unwrap();
         assert_eq!(manifest.id, "dev.lizun.hello");
         fs::remove_dir_all(&dir).unwrap();
         fs::remove_file(&archive_path).unwrap();

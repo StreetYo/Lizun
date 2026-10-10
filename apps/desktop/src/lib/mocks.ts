@@ -177,7 +177,16 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         source: 'user',
       };
       const replaces = mockWidgets.find((w) => w.id === mockPending!.id) as { version?: string } | undefined;
-      return { token: 1, manifest: mockPending, origin: source.url ?? source.path, replaces: replaces?.version ?? null } as T;
+      // The installed clock came from GitHub, so installing it from a file shows the warning.
+      const previousSource = replaces ? 'github.com/example/clock' : null;
+      return {
+        token: 1,
+        manifest: mockPending,
+        origin: source.url ?? source.path,
+        replaces: replaces?.version ?? null,
+        previousSource,
+        sourceChanged: previousSource !== null && !source.url,
+      } as T;
     }
     case 'widgets_install_confirm': {
       const index = mockWidgets.findIndex((w) => w.id === mockPending?.id);

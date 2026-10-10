@@ -13,6 +13,12 @@ export interface PendingInstall {
   origin: string;
   /** Version of the installed widget this one replaces. */
   replaces: string | null;
+  /** Where a widget with this id was installed from before: `github.com/<owner>/<repo>` or
+   * `local`, or null when Lizun does not know. */
+  previousSource: string | null;
+  /** The widget may not be by the author of the one Lizun had with this id; installing it resets
+   * that widget's settings. */
+  sourceChanged: boolean;
 }
 
 /** Installs a widget in two steps: download and check it, then install it once the user has

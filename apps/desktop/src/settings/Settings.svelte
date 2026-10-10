@@ -897,7 +897,7 @@
           </div>
         {/if}
         {#if installer.pending}
-          {@const { origin, replaces } = installer.pending}
+          {@const { origin, replaces, previousSource, sourceChanged } = installer.pending}
           {@const manifest = localized(installer.pending.manifest)}
           <div class="row review">
             <div class="text">
@@ -907,7 +907,18 @@
                 {manifest.author ? `${t('settings.widgets.by', { author: manifest.author })} · ` : ''}{manifest.id}
               </div>
               <div class="hint origin">{t('settings.widgets.from', { origin })}</div>
-              {#if replaces}
+              {#if sourceChanged}
+                {#if replaces}
+                  <div class="hint">{t('settings.widgets.replacesVersion', { version: replaces })}</div>
+                {/if}
+                <div class="hint warning">
+                  {previousSource
+                    ? t('settings.widgets.sourceChanged', {
+                        source: previousSource === 'local' ? t('settings.widgets.sourceLocal') : previousSource,
+                      })
+                    : t('settings.widgets.sourceUnknown')}
+                </div>
+              {:else if replaces}
                 <div class="hint">{t('settings.widgets.replaces', { version: replaces })}</div>
               {/if}
               {@render permissionChips(manifest)}
@@ -1717,6 +1728,10 @@
   .origin {
     user-select: text;
     word-break: break-all;
+  }
+
+  .review .warning {
+    color: var(--danger);
   }
 
   .row.review-actions {
