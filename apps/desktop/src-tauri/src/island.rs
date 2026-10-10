@@ -2,8 +2,10 @@
 //! primary monitor. Only the rectangles reported by the UI receive input; everything else
 //! falls through to the windows below.
 
+use std::sync::OnceLock;
+
 use serde::Deserialize;
-use tauri::{App, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+use tauri::{App, Emitter, Manager, PhysicalSize, WebviewWindow, WindowEvent};
 
 pub const ISLAND_LABEL: &str = "island";
 /// Sent to the island page when its window stops being the active one.
@@ -16,6 +18,9 @@ const STRIP_HEIGHT: f64 = 520.0;
 /// Interactive area until the UI reports its own: roughly the collapsed pill.
 const INITIAL_HIT_SIZE: (f64, f64) = (360.0, 40.0);
 
+/// The island window, for `displays_changed`.
+static WINDOW: OnceLock<WebviewWindow> = OnceLock::new();
+
 /// The window is created visible (at the primary monitor's origin, fully transparent): the
 /// WebView only creates the child windows that receive file drops once it is shown, and the
 /// drop handler is attached when the WebView is created.
@@ -24,7 +29,15 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
         .get_webview_window(ISLAND_LABEL)
         .expect("the island window is declared in tauri.conf.json");
     place_on_primary_monitor(&window)?;
+    let _ = WINDOW.set(window.clone());
     crate::platform::prepare_island_window(&window)?;
+    // A new scale keeps the window's logical size, and a moved window may no longer cover the
+    // primary monitor, so the strip is fitted again after either.
+    window.on_window_event(|event| {
+        if matches!(event, WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Moved(_)) {
+            displays_changed();
+        }
+    });
     let app_handle = app.handle().clone();
     crate::platform::on_deactivated(move || {
         if let Err(err) = app_handle.emit_to(ISLAND_LABEL, EVENT_DEACTIVATED, ()) {
@@ -41,14 +54,33 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Fits the strip to the primary monitor again, which may have changed its resolution, scale or
+/// place, or be another monitor now. Also called by the window procedure on WM_DISPLAYCHANGE.
+/// The work is done off the main thread, so it comes after the change the main thread is busy
+/// with: on a new scale, Tauri resizes the window to its old logical size right after the event.
+pub fn displays_changed() {
+    let Some(window) = WINDOW.get().cloned() else { return };
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(err) = place_on_primary_monitor(&window) {
+            log::warn!("could not fit the island to the primary monitor: {err}");
+        }
+    });
+}
+
 fn place_on_primary_monitor(window: &WebviewWindow) -> tauri::Result<()> {
     let Some(monitor) = window.primary_monitor()? else {
         log::warn!("no primary monitor reported, keeping the default window placement");
         return Ok(());
     };
-    let height = (STRIP_HEIGHT * monitor.scale_factor()).round() as u32;
-    window.set_size(PhysicalSize::new(monitor.size().width, height))?;
-    window.set_position(PhysicalPosition::new(monitor.position().x, monitor.position().y))?;
+    let position = *monitor.position();
+    let size = PhysicalSize::new(monitor.size().width, (STRIP_HEIGHT * monitor.scale_factor()).round() as u32);
+    // Moving the window reports back as a window event, so only a change is applied.
+    if window.outer_position()? != position {
+        window.set_position(position)?;
+    }
+    if window.inner_size()? != size {
+        window.set_size(size)?;
+    }
     Ok(())
 }
 

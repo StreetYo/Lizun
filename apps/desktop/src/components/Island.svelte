@@ -379,6 +379,10 @@
   });
 </script>
 
+<!-- The core fits the window to the primary monitor again when the displays or their scaling
+     change; the input region is in physical pixels from the window's corner, so it is sent again. -->
+<svelte:window onresize={updateRegion} />
+
 <!-- Hover is tracked on a wrapper so that moving from the edge sensor into the growing island
      does not count as leaving. -->
 <div
