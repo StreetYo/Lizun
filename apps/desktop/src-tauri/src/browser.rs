@@ -50,7 +50,7 @@ const MAX_MESSAGE_BYTES: usize = MAX_ARTWORK_BYTES + 64 * 1024;
 /// Longest tab id, cover URL or text kept. Longer text is cut; longer ids and URLs are ignored.
 const MAX_TEXT_BYTES: usize = 1024;
 /// The actions the island can ask for; others are dropped.
-const ACTIONS: [&str; 4] = ["play", "pause", "next", "previous"];
+const ACTIONS: [&str; 5] = ["play", "pause", "next", "previous", "seek"];
 
 /// Origins the extension connects from. Web pages can open WebSockets to localhost too, so
 /// they are turned away; non-browser clients send no origin and are local programs anyway.
@@ -108,7 +108,13 @@ struct TabState {
 #[serde(tag = "type", rename_all = "camelCase")]
 enum Outgoing<'a> {
     Hello { protocol: u32, app: &'a str, version: &'a str },
-    Command { id: &'a str, action: &'a str },
+    Command {
+        id: &'a str,
+        action: &'a str,
+        /// Seconds, for `seek` only.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        position: Option<f64>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,8 +202,13 @@ pub fn control(app: &AppHandle, player_id: &str, command: MediaCommand, playing:
         MediaCommand::TogglePlayPause => "play",
         MediaCommand::Next => "next",
         MediaCommand::Previous => "previous",
+        MediaCommand::Seek(_) => "seek",
     };
-    let message = serde_json::to_string(&Outgoing::Command { id: tab, action }).map_err(|e| e.to_string())?;
+    let position = match command {
+        MediaCommand::Seek(ms) => Some(ms as f64 / 1000.0),
+        _ => None,
+    };
+    let message = serde_json::to_string(&Outgoing::Command { id: tab, action, position }).map_err(|e| e.to_string())?;
     let connections = server.connections.lock().unwrap();
     let connection = connections.get(&connection).ok_or("the browser has disconnected")?;
     connection.commands.send(message).map_err(|_| "the browser has disconnected".to_string())
@@ -559,6 +570,7 @@ impl Tab {
             can_toggle: can(if state.playing { "pause" } else { "play" }),
             can_next: can("next"),
             can_previous: can("previous"),
+            can_seek: duration_ms.is_some() && can("seek"),
         }
     }
 }
@@ -676,7 +688,7 @@ mod tests {
 
     #[test]
     fn writes_commands() {
-        let command = Outgoing::Command { id: "601786579:0", action: "next" };
+        let command = Outgoing::Command { id: "601786579:0", action: "next", position: None };
         assert_eq!(
             serde_json::to_string(&command).unwrap(),
             r#"{"type":"command","id":"601786579:0","action":"next"}"#
@@ -714,7 +726,7 @@ mod tests {
         assert!(tabs.handle(&player_message("1:0", &"ü".repeat(MAX_TEXT_BYTES), "u")));
         let state = &tabs.tabs["1:0"].state;
         assert!(state.title.len() <= MAX_TEXT_BYTES && state.title.chars().all(|c| c == 'ü'));
-        assert_eq!(state.actions, ["play", "pause"]);
+        assert_eq!(state.actions, ["play", "pause", "seek"]);
         assert!(!tabs.handle(&player_message(&"1".repeat(MAX_TEXT_BYTES + 1), "Long id", "u")));
         tabs.handle(&player_message("1:1", "Long cover URL", &"u".repeat(MAX_TEXT_BYTES + 1)));
         assert_eq!(tabs.tabs["1:1"].state.artwork_url, None);

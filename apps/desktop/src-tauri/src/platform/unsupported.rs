@@ -104,3 +104,27 @@ pub fn show_app(_pid: u32) -> bool {
 pub fn close_app_if_hidden(_pid: u32) -> bool {
     false
 }
+
+pub fn open_url(_url: &str) -> Result<(), String> {
+    Err("opening links is not supported on this platform yet".into())
+}
+
+pub fn protect(_data: &[u8]) -> Result<Vec<u8>, String> {
+    Err("secrets are not supported on this platform yet".into())
+}
+
+pub fn unprotect(_data: &[u8]) -> Result<Vec<u8>, String> {
+    Err("secrets are not supported on this platform yet".into())
+}
+
+pub struct SystemSampler;
+
+impl SystemSampler {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn sample(&mut self) -> Result<crate::system_stats::SystemStats, String> {
+        Err("system statistics are not supported on this platform yet".into())
+    }
+}

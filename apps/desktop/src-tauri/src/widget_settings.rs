@@ -6,6 +6,7 @@
 //! every declared key with a value of the declared type. Widgets can only read them.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::net::IpAddr;
 use std::fs;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
@@ -88,6 +89,28 @@ pub enum SettingSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         file: Option<FileChoice>,
     },
+    /// An address the user types, such as their Home Assistant server. The widget may reach its
+    /// origin without listing it in `network`: the user chose it (see `user_origin`).
+    Url {
+        key: String,
+        label: String,
+        #[serde(default)]
+        description: String,
+        #[serde(default)]
+        default: String,
+        #[serde(default)]
+        placeholder: String,
+    },
+    /// A token or password. The settings window does not show it, and it is stored encrypted for
+    /// this Windows user (`platform::protect`); the widget gets it in plain text.
+    Secret {
+        key: String,
+        label: String,
+        #[serde(default)]
+        description: String,
+        #[serde(default)]
+        placeholder: String,
+    },
 }
 
 /// A setting's texts in another language, from the manifest's `locales`. Whatever is left out
@@ -121,7 +144,12 @@ fn default_max_length() -> usize {
 impl SettingSpec {
     pub fn key(&self) -> &str {
         match self {
-            Self::Toggle { key, .. } | Self::Number { key, .. } | Self::Select { key, .. } | Self::Text { key, .. } => key,
+            Self::Toggle { key, .. }
+            | Self::Number { key, .. }
+            | Self::Select { key, .. }
+            | Self::Text { key, .. }
+            | Self::Url { key, .. }
+            | Self::Secret { key, .. } => key,
         }
     }
 
@@ -130,7 +158,9 @@ impl SettingSpec {
             Self::Toggle { label, .. }
             | Self::Number { label, .. }
             | Self::Select { label, .. }
-            | Self::Text { label, .. } => label,
+            | Self::Text { label, .. }
+            | Self::Url { label, .. }
+            | Self::Secret { label, .. } => label,
         }
     }
 
@@ -139,7 +169,19 @@ impl SettingSpec {
             Self::Toggle { description, .. }
             | Self::Number { description, .. }
             | Self::Select { description, .. }
-            | Self::Text { description, .. } => description,
+            | Self::Text { description, .. }
+            | Self::Url { description, .. }
+            | Self::Secret { description, .. } => description,
+        }
+    }
+
+    /// Text, url and secret settings have one.
+    fn placeholder(&self) -> Option<&str> {
+        match self {
+            Self::Text { placeholder, .. } | Self::Url { placeholder, .. } | Self::Secret { placeholder, .. } => {
+                Some(placeholder)
+            }
+            _ => None,
         }
     }
 
@@ -152,7 +194,10 @@ impl SettingSpec {
         match self {
             Self::Toggle { default, .. } => Value::Bool(*default),
             Self::Number { default, .. } => number(*default),
-            Self::Select { default, .. } | Self::Text { default, .. } => Value::String(default.clone()),
+            Self::Select { default, .. } | Self::Text { default, .. } | Self::Url { default, .. } => {
+                Value::String(default.clone())
+            }
+            Self::Secret { .. } => Value::String(String::new()),
         }
     }
 
@@ -171,6 +216,108 @@ impl SettingSpec {
             Self::Text { max_length, .. } => {
                 value.as_str().map(|text| Value::String(text.chars().take(*max_length).collect()))
             }
+            // An address is kept the way it was understood, so the user sees what is reached.
+            Self::Url { .. } => match value.as_str()?.trim() {
+                "" => Some(Value::String(String::new())),
+                text => normalize_url(text).map(Value::String),
+            },
+            Self::Secret { .. } => {
+                value.as_str().filter(|text| text.len() <= MAX_SECRET).map(|text| Value::String(text.into()))
+            }
+        }
+    }
+}
+
+/// Longest secret, in bytes.
+const MAX_SECRET: usize = 4096;
+/// Longest address, in characters.
+const MAX_URL: usize = 2048;
+/// How a secret is kept in the settings file: DPAPI-encrypted bytes in base64 under this key.
+const SECRET_FIELD: &str = "$protected";
+
+/// The address as a URL Lizun lets a widget reach, or `None`: `https://` (or `wss://`) anywhere,
+/// plain `http://` (or `ws://`) only to this computer and the local network, where servers
+/// often have no certificate. An address typed without a scheme is read as `https://`.
+pub fn normalize_url(text: &str) -> Option<String> {
+    if text.chars().count() > MAX_URL {
+        return None;
+    }
+    let with_scheme = if text.contains("://") { text.to_string() } else { format!("https://{text}") };
+    let url = tauri::Url::parse(&with_scheme).ok()?;
+    if !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    let allowed = match url.scheme() {
+        "https" | "wss" => true,
+        "http" | "ws" => is_local(url.host_str()?),
+        _ => false,
+    };
+    (allowed && url.host_str().is_some_and(|host| !host.is_empty())).then(|| url.to_string())
+}
+
+/// This computer, private and link-local addresses, the shared range mesh VPNs such as
+/// Tailscale use, and names that only resolve on a local network (`nas`, `printer.local`).
+/// `host` is as a parsed URL has it: IPv6 addresses in brackets, names in lowercase.
+fn is_local(host: &str) -> bool {
+    match ip_address(host) {
+        Some(IpAddr::V4(ip)) => {
+            let [a, b, ..] = ip.octets();
+            ip.is_loopback() || ip.is_private() || ip.is_link_local() || (a == 100 && (64..128).contains(&b))
+        }
+        Some(IpAddr::V6(ip)) => {
+            let first = ip.segments()[0];
+            ip.is_loopback() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80
+        }
+        None => {
+            let name = host.trim_end_matches('.');
+            !name.contains('.')
+                || [".local", ".lan", ".home", ".home.arpa", ".internal", ".localhost"].iter().any(|end| name.ends_with(end))
+        }
+    }
+}
+
+fn ip_address(host: &str) -> Option<IpAddr> {
+    host.trim_start_matches('[').trim_end_matches(']').parse().ok()
+}
+
+/// The origin a `url` setting's value lets the widget reach, for the CSP and `network.request`:
+/// `https://host[:port]` for secure addresses and `http://host[:port]` for plain ones; in a CSP
+/// they also cover `wss://` and `ws://`. `None` when the value is empty or invalid, or names a
+/// refused port on this computer.
+pub fn user_origin(value: &str) -> Option<String> {
+    let url = tauri::Url::parse(&normalize_url(value)?).ok()?;
+    let secure = matches!(url.scheme(), "https" | "wss");
+    let host = url.host_str()?;
+    let loopback = ip_address(host).map_or(host == "localhost", |ip| ip.is_loopback());
+    let port = url.port_or_known_default().unwrap_or(if secure { 443 } else { 80 });
+    if loopback && crate::widgets::FORBIDDEN_LOOPBACK_PORTS.contains(&port) {
+        return None;
+    }
+    let scheme = if secure { "https" } else { "http" };
+    Some(match url.port() {
+        Some(port) => format!("{scheme}://{host}:{port}"),
+        None => format!("{scheme}://{host}"),
+    })
+}
+
+/// Encrypts a secret for the settings file.
+fn seal(secret: &str) -> Result<Value, String> {
+    use base64::Engine;
+    let sealed = crate::platform::protect(secret.as_bytes())?;
+    Ok(serde_json::json!({ SECRET_FIELD: base64::engine::general_purpose::STANDARD.encode(sealed) }))
+}
+
+/// The secret from the settings file; `None` when it cannot be decrypted, for example in a file
+/// copied from another computer or another Windows user.
+fn unseal(value: &Value) -> Option<String> {
+    use base64::Engine;
+    let encoded = value.get(SECRET_FIELD)?.as_str()?;
+    let sealed = base64::engine::general_purpose::STANDARD.decode(encoded).ok()?;
+    match crate::platform::unprotect(&sealed) {
+        Ok(bytes) => String::from_utf8(bytes).ok(),
+        Err(err) => {
+            log::warn!("a widget secret cannot be decrypted: {err}");
+            None
         }
     }
 }
@@ -245,6 +392,15 @@ pub fn validate(settings: &[SettingSpec]) -> Result<(), String> {
                     }
                 }
             }
+            SettingSpec::Url { default, placeholder, .. } => {
+                if !default.is_empty() && normalize_url(default).as_deref() != Some(default.as_str()) {
+                    return Err(field(
+                        "default must be empty or a full https:// address (http:// only on the local network) as Lizun writes it, such as https://example.com/",
+                    ));
+                }
+                check_length(&field("placeholder"), placeholder, 0..=100)?;
+            }
+            SettingSpec::Secret { placeholder, .. } => check_length(&field("placeholder"), placeholder, 0..=100)?,
         }
     }
     Ok(())
@@ -257,10 +413,10 @@ pub fn validate_texts(settings: &[SettingSpec], texts: &BTreeMap<String, Setting
         let setting = settings.iter().find(|setting| setting.key() == key).ok_or_else(|| format!("there is no setting {key:?}"))?;
         let field = |name: &str| format!("setting {key:?}: {name}");
         let fits = (texts.unit.is_none() || matches!(setting, SettingSpec::Number { .. }))
-            && (texts.placeholder.is_none() || matches!(setting, SettingSpec::Text { .. }))
+            && (texts.placeholder.is_none() || setting.placeholder().is_some())
             && (texts.options.is_empty() || matches!(setting, SettingSpec::Select { .. }));
         if !fits {
-            return Err(field("only number settings have a unit, text settings a placeholder and select settings options"));
+            return Err(field("only number settings have a unit, text, url and secret settings a placeholder and select settings options"));
         }
         if let Some(label) = &texts.label {
             check_length(&field("label"), label, 1..=60)?;
@@ -307,16 +463,63 @@ fn is_hidden_control(c: char) -> bool {
         || matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
-/// Every declared key with a valid value: the stored one, fixed up, or the default. Stored keys
-/// that are no longer declared are left out.
+/// Every declared key with a valid value: the stored one, fixed up, or the default, with
+/// secrets decrypted. Stored keys that are no longer declared are left out.
 pub fn resolve(settings: &[SettingSpec], stored: Option<&Values>) -> Values {
+    reveal(settings, &kept(settings, stored))
+}
+
+/// What is saved for these values: like `resolve`, but secrets stay encrypted, and a secret
+/// stored in plain text (written into the file by hand) gets encrypted.
+fn kept(settings: &[SettingSpec], stored: Option<&Values>) -> Values {
     settings
         .iter()
         .map(|setting| {
-            let value = stored.and_then(|values| values.get(setting.key())).and_then(|v| setting.coerce(v));
+            let stored = stored.and_then(|values| values.get(setting.key()));
+            let value = match setting {
+                SettingSpec::Secret { .. } => match stored {
+                    Some(value) if value.get(SECRET_FIELD).is_some() => Some(value.clone()),
+                    Some(Value::String(text)) if !text.is_empty() => seal(text).ok(),
+                    _ => None,
+                },
+                _ => stored.and_then(|value| setting.coerce(value)),
+            };
             (setting.key().to_string(), value.unwrap_or_else(|| setting.default_value()))
         })
         .collect()
+}
+
+/// The values with their secrets decrypted.
+fn reveal(settings: &[SettingSpec], kept: &Values) -> Values {
+    let mut values = kept.clone();
+    for setting in settings {
+        if let SettingSpec::Secret { .. } = setting
+            && let Some(value) = values.get_mut(setting.key())
+            && value.get(SECRET_FIELD).is_some()
+        {
+            *value = Value::String(unseal(value).unwrap_or_default());
+        }
+    }
+    values
+}
+
+/// Origins the user let a widget reach by filling in its `url` settings.
+pub fn user_origins<R: tauri::Runtime>(app: &AppHandle<R>, manifest: &crate::widgets::WidgetManifest) -> Vec<String> {
+    let Some(store) = app.try_state::<Store>() else { return Vec::new() };
+    let stored = store.0.lock().unwrap();
+    let stored = stored.get(&manifest.id);
+    let mut origins: Vec<String> = manifest
+        .settings
+        .iter()
+        .filter(|setting| matches!(setting, SettingSpec::Url { .. }))
+        .filter_map(|setting| {
+            let value = stored.and_then(|values| values.get(setting.key())).and_then(|value| setting.coerce(value));
+            user_origin(value.unwrap_or_else(|| setting.default_value()).as_str()?)
+        })
+        .collect();
+    origins.sort();
+    origins.dedup();
+    origins
 }
 
 /// Stored values by widget id. Values of uninstalled widgets are kept, so reinstalling a widget
@@ -447,10 +650,20 @@ pub fn widget_settings_set(
         .iter()
         .find(|s| s.key() == key)
         .ok_or_else(|| format!("{widget_id} has no setting {key:?}"))?;
-    let value = setting.coerce(&value).ok_or_else(|| format!("{value} is not a valid value for {key:?}"))?;
-    let mut values = resolve(&settings, store.0.lock().unwrap().get(&widget_id));
-    values.insert(key, value);
-    commit(&app, &store, &widget_id, Some(values.clone()), &values)?;
+    let value = setting.coerce(&value).ok_or_else(|| match setting {
+        SettingSpec::Url { .. } => {
+            "use an https:// address; plain http:// works only on this computer and the local network".to_string()
+        }
+        _ => format!("{value} is not a valid value for {key:?}"),
+    })?;
+    let value = match (setting, value.as_str()) {
+        (SettingSpec::Secret { .. }, Some(secret)) if !secret.is_empty() => seal(secret)?,
+        _ => value,
+    };
+    let mut stored = kept(&settings, store.0.lock().unwrap().get(&widget_id));
+    stored.insert(key, value);
+    let values = reveal(&settings, &stored);
+    commit(&app, &store, &widget_id, Some(stored), &values)?;
     Ok(values)
 }
 
@@ -546,6 +759,78 @@ mod tests {
         });
         let fixed = resolve(&settings, stored.as_object());
         assert_eq!(Value::Object(fixed), json!({ "city": "Saint Pete", "units": "metric", "refresh": 120, "feelsLike": true }));
+    }
+
+    #[test]
+    fn reads_addresses_the_widget_may_reach() {
+        let ok = |text: &str, expected: &str| assert_eq!(normalize_url(text).as_deref(), Some(expected), "{text}");
+        ok("example.com", "https://example.com/");
+        ok("https://example.com/feed.xml", "https://example.com/feed.xml");
+        ok("wss://example.com:8443/ws", "wss://example.com:8443/ws");
+        ok("http://192.168.1.5:8123", "http://192.168.1.5:8123/");
+        ok("http://10.0.0.2", "http://10.0.0.2/");
+        ok("http://100.101.1.2:80", "http://100.101.1.2/");
+        ok("http://homeassistant.local:8123", "http://homeassistant.local:8123/");
+        ok("http://nas:5000", "http://nas:5000/");
+        ok("http://[fd00::1]:8123", "http://[fd00::1]:8123/");
+        ok("ws://127.0.0.1:4455", "ws://127.0.0.1:4455/");
+        for bad in [
+            "http://example.com",
+            "http://8.8.8.8",
+            "http://172.32.0.1",
+            "ftp://example.com",
+            "file:///C:/x",
+            "https://user:pass@example.com",
+            "javascript:alert(1)",
+            "https://",
+        ] {
+            assert_eq!(normalize_url(bad), None, "{bad} should be refused");
+        }
+
+        assert_eq!(user_origin("http://192.168.1.5:8123/api").as_deref(), Some("http://192.168.1.5:8123"));
+        assert_eq!(user_origin("wss://example.com/socket").as_deref(), Some("https://example.com"));
+        assert_eq!(user_origin("ws://localhost:4455").as_deref(), Some("http://localhost:4455"));
+        assert_eq!(user_origin("http://127.0.0.1:9222"), None);
+        assert_eq!(user_origin("http://localhost:6869"), None);
+        assert_eq!(user_origin(""), None);
+    }
+
+    #[test]
+    fn checks_address_and_secret_settings() {
+        let good = parse(json!([
+            { "key": "server", "type": "url", "label": "Server", "default": "", "placeholder": "http://homeassistant.local:8123" },
+            { "key": "feed", "type": "url", "label": "Feed", "default": "https://example.com/feed.xml" },
+            { "key": "token", "type": "secret", "label": "Token", "placeholder": "Paste a token" }
+        ]))
+        .unwrap();
+        assert_eq!(Value::Object(resolve(&good, None)), json!({ "server": "", "feed": "https://example.com/feed.xml", "token": "" }));
+        assert_eq!(good[0].coerce(&json!("http://192.168.0.2:8123")), Some(json!("http://192.168.0.2:8123/")));
+        assert_eq!(good[0].coerce(&json!("http://example.com")), None);
+        assert_eq!(good[0].coerce(&json!("  ")), Some(json!("")));
+        for bad in [
+            json!([{ "key": "u", "type": "url", "label": "U", "default": "http://example.com" }]),
+            json!([{ "key": "u", "type": "url", "label": "U", "default": "example.com" }]),
+            json!([{ "key": "s", "type": "secret", "label": "S", "default": "hunter2" }]),
+        ] {
+            assert!(parse(bad.clone()).is_err(), "{bad} should be rejected");
+        }
+    }
+
+    #[test]
+    fn keeps_secrets_encrypted() {
+        let settings = parse(json!([{ "key": "token", "type": "secret", "label": "Token" }])).unwrap();
+        let sealed = seal("ghp_secret").unwrap();
+        let stored = json!({ "token": sealed.clone() });
+        assert!(!sealed.to_string().contains("ghp_secret"));
+        assert_eq!(Value::Object(resolve(&settings, stored.as_object())), json!({ "token": "ghp_secret" }));
+        assert_eq!(kept(&settings, stored.as_object())["token"], sealed);
+        // Written into the file by hand: read, and encrypted when saved.
+        let plain = json!({ "token": "typed" });
+        assert_eq!(resolve(&settings, plain.as_object())["token"], json!("typed"));
+        assert!(kept(&settings, plain.as_object())["token"].get(SECRET_FIELD).is_some());
+        // From another computer: cannot be decrypted, so it is empty.
+        let foreign = json!({ "token": { SECRET_FIELD: "AAAA" } });
+        assert_eq!(resolve(&settings, foreign.as_object())["token"], json!(""));
     }
 
     #[test]

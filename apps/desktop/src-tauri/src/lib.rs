@@ -10,7 +10,9 @@ mod media;
 mod platform;
 mod preferences;
 mod settings;
+mod system_stats;
 mod system_tray;
+mod widget_actions;
 mod widget_apps;
 mod widget_install;
 mod widget_network;
@@ -39,12 +41,14 @@ pub fn run() {
         .register_uri_scheme_protocol(widgets::SCHEME, widgets::serve)
         .manage(widget_storage::Writes::default())
         .manage(widget_apps::Started::default())
+        .manage(system_stats::Sampler::default())
         .invoke_handler(tauri::generate_handler![
             island::island_set_hit_region,
             island::island_keyboard,
             media::media_snapshot,
             media::media_artwork,
             media::media_control,
+            media::media_seek,
             media::media_players,
             media::media_select,
             browser::browser_media_status,
@@ -65,6 +69,9 @@ pub fn run() {
             widget_install::widgets_install_cancel,
             widget_install::widgets_uninstall,
             widget_network::widget_network_request,
+            widget_actions::widget_open_link,
+            widget_actions::widget_clipboard_write,
+            system_stats::widget_system_stats,
             widget_apps::widget_app_start,
             widget_apps::widget_app_show,
             widget_storage::widget_storage_get,

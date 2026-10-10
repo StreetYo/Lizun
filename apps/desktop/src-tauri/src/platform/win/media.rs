@@ -292,6 +292,10 @@ impl WatchedSession {
             MediaCommand::TogglePlayPause => self.session.TryTogglePlayPauseAsync()?,
             MediaCommand::Next => self.session.TrySkipNextAsync()?,
             MediaCommand::Previous => self.session.TrySkipPreviousAsync()?,
+            MediaCommand::Seek(ms) => {
+                let start = self.session.GetTimelineProperties()?.StartTime()?.Duration;
+                self.session.TryChangePlaybackPositionAsync(start + ms as i64 * 10_000)?
+            }
         };
         operation.join()?;
         Ok(())
@@ -348,6 +352,7 @@ fn read_now_playing(session: &Session) -> windows::core::Result<Option<NowPlayin
         can_toggle: controls.IsPlayPauseToggleEnabled()?,
         can_next: controls.IsNextEnabled()?,
         can_previous: controls.IsPreviousEnabled()?,
+        can_seek: has_timeline && controls.IsPlaybackPositionEnabled()?,
     }))
 }
 

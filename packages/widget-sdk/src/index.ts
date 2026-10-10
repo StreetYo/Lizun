@@ -34,6 +34,8 @@ export interface WidgetContext {
   settings: Settings;
   /** The language the user picked for Lizun, such as `en` or `ru`; see `language`. */
   language: string;
+  /** Whether the island is open right now; see `island`. */
+  islandOpen: boolean;
 }
 
 export interface NowPlaying {
@@ -49,6 +51,8 @@ export interface NowPlaying {
   canToggle: boolean;
   canNext: boolean;
   canPrevious: boolean;
+  /** Whether `media.seek` works for this player. */
+  canSeek: boolean;
 }
 
 /** Icons a live activity can use. */
@@ -104,6 +108,27 @@ export interface LiveActivity {
   title?: string;
   /** Right end. */
   trailing?: ActivityPart;
+}
+
+/** The computer's load, from `system.stats()`. Usages are percentages from 0 to 100. */
+export interface SystemStats {
+  cpu: {
+    /** Over all processors, the way Task Manager shows it. */
+    usage: number;
+    /** Each logical processor. */
+    cores: number[];
+    name: string;
+  };
+  memory: { totalBytes: number; usedBytes: number };
+  /** The busiest graphics engine; `null` when it cannot be measured. */
+  gpu: { usage: number } | null;
+  /** `null` on a computer without a battery. */
+  battery: { percent: number; charging: boolean; pluggedIn: boolean; secondsLeft: number | null } | null;
+  /** Fixed drives, such as `{ mount: 'C:', label: 'Windows', ... }`. */
+  disks: { mount: string; label: string; totalBytes: number; freeBytes: number }[];
+  /** Over the network adapters of the computer itself; virtual ones such as a VPN's are left out. */
+  network: { downBytesPerSec: number; upBytesPerSec: number };
+  uptimeSec: number;
 }
 
 /** A request sent with `network.request`. */
@@ -280,6 +305,35 @@ export const media = {
   togglePlayPause: () => call<void>('media.control', { command: 'togglePlayPause' }),
   next: () => call<void>('media.control', { command: 'next' }),
   previous: () => call<void>('media.control', { command: 'previous' }),
+  /** Jumps to a position of the current track, when `canSeek` is true. */
+  seek: (positionMs: number) => call<void>('media.seek', { positionMs }),
+};
+
+/**
+ * The computer's load: processor, graphics, memory, battery, disks and network. Needs `system`.
+ * Usages and rates are measured since the previous sample, and a sample is shared by all widgets
+ * for half a second; poll every one to a few seconds while the widget is visible. The first call
+ * after Lizun starts may report 0 for them.
+ */
+export const system = {
+  stats: () => call<SystemStats>('system.stats'),
+};
+
+/**
+ * Opens an `http` or `https` link in the default browser. Needs `links`. Works only while the
+ * island is open and the pointer is on the widget, so call it from a click; otherwise it rejects
+ * with a `LizunError` whose code is `not_allowed`.
+ */
+export const links = {
+  open: (url: string) => call<void>('links.open', { url }),
+};
+
+/**
+ * Puts text on the clipboard. Needs `clipboard:write`. Like `links.open`, only from a click on
+ * the widget in the open island.
+ */
+export const clipboard = {
+  writeText: (text: string) => call<void>('clipboard.writeText', { text }),
 };
 
 /**
@@ -299,6 +353,16 @@ export const settings = {
 export const language = {
   /** Called with the new code when the user switches the language. */
   subscribe: (listener: (language: string) => void): (() => void) => on('language.changed', listener),
+};
+
+/**
+ * Whether the island is open, so the widget is on screen. Closing the island does not hide the
+ * widget's page (no `visibilitychange`), so a widget that refreshes when it is looked at, or
+ * stops polling while nobody looks, listens here. `ready()` returns the state at the start.
+ */
+export const island = {
+  /** Called with `{ open }` whenever the island opens or closes. */
+  subscribe: (listener: (state: { open: boolean }) => void): (() => void) => on('island.changed', listener),
 };
 
 /**

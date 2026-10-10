@@ -31,7 +31,7 @@ class WidgetSettingsStore {
 
   /** A plain copy of the widget's values, with defaults for anything not loaded yet. */
   of(widget: SettingsOwner): SettingValues {
-    const defaults = Object.fromEntries(widget.settings.map((setting) => [setting.key, setting.default]));
+    const defaults = Object.fromEntries(widget.settings.map((setting) => [setting.key, setting.default ?? '']));
     return { ...defaults, ...this.values[widget.id] };
   }
 

@@ -21,7 +21,11 @@ export type SettingSpec =
       placeholder: string;
       /** Built-in widgets only: a button fills the field with the path of a file picked in a dialog. */
       file?: { name: string; extensions: string[] };
-    });
+    })
+  /** An address the user types; the widget may reach its origin. Lizun stores it normalized. */
+  | (SettingBase & { type: 'url'; default: string; placeholder: string })
+  /** Stored encrypted; the settings window never shows it. Its value is '' until set. */
+  | (SettingBase & { type: 'secret'; default?: undefined; placeholder: string });
 
 /** A setting's texts in another language (see src-tauri/src/widget_settings.rs). */
 export interface SettingTexts {
@@ -77,6 +81,8 @@ function localizedSetting(setting: SettingSpec, texts: SettingTexts | undefined)
     case 'number':
       return { ...setting, ...common, unit: texts.unit ?? setting.unit };
     case 'text':
+    case 'url':
+    case 'secret':
       return { ...setting, ...common, placeholder: texts.placeholder ?? setting.placeholder };
     case 'select':
       return {

@@ -36,7 +36,8 @@ const MAX_DESCRIPTION: usize = 200;
 const MAX_VERSION: usize = 32;
 
 /// Permissions a widget can request. The island refuses SDK calls that need anything else.
-pub const KNOWN_PERMISSIONS: &[&str] = &["media:read", "media:control", "storage", "activity"];
+pub const KNOWN_PERMISSIONS: &[&str] =
+    &["media:read", "media:control", "storage", "activity", "system", "links", "clipboard:write"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -387,14 +388,15 @@ fn resolve<R: Runtime>(app: &AppHandle<R>, raw_path: &str) -> Result<ServedFile,
     let path = percent_decode_str(raw_path).decode_utf8().map_err(|_| StatusCode::BAD_REQUEST)?;
     let (first, rest) = path.trim_start_matches('/').split_once('/').unwrap_or((path.trim_start_matches('/'), ""));
 
-    let (base, relative, manifest) = if first == SDK_PREFIX {
+    let (base, relative, policy) = if first == SDK_PREFIX {
         (sdk_dir(app).ok_or(StatusCode::NOT_FOUND)?, rest.to_string(), None)
     } else {
         let widgets = app.state::<Registry>();
         let widgets = widgets.widgets.read().unwrap();
         let widget = widgets.iter().find(|w| w.manifest.id == first).ok_or(StatusCode::NOT_FOUND)?;
         let relative = if rest.is_empty() { widget.manifest.entry.clone() } else { rest.to_string() };
-        (widget.dir.clone(), relative, Some(widget.manifest.clone()))
+        let user_origins = crate::widget_settings::user_origins(app, &widget.manifest);
+        (widget.dir.clone(), relative, Some((widget.manifest.clone(), user_origins)))
     };
 
     let relative = safe_relative_path(&relative).ok_or(StatusCode::FORBIDDEN)?;
@@ -407,8 +409,8 @@ fn resolve<R: Runtime>(app: &AppHandle<R>, raw_path: &str) -> Result<ServedFile,
     // Every response carries the policy, not only HTML: an SVG opened as a document and a
     // script started as a worker are governed by their own response's CSP, and without one
     // they could run scripts or fetch anywhere. SVG never needs scripts.
-    let csp = match manifest {
-        Some(manifest) => widget_csp(&manifest, !is_svg(&path)),
+    let csp = match policy {
+        Some((manifest, user_origins)) => widget_csp(&manifest, &user_origins, !is_svg(&path)),
         None => SDK_CSP.to_string(),
     };
     Ok(ServedFile { path, bytes, csp })
@@ -418,8 +420,11 @@ fn resolve<R: Runtime>(app: &AppHandle<R>, raw_path: &str) -> Result<ServedFile,
 /// matters only if a widget tries to open one as a page or a worker.
 const SDK_CSP: &str = "default-src 'none'";
 
-/// The widget's policy; `scripts` is false for documents that have no business running any.
-fn widget_csp(manifest: &WidgetManifest, scripts: bool) -> String {
+/// The widget's policy; `user_origins` come from its `url` settings, and `scripts` is false for
+/// documents that have no business running any. Every `https://` or `http://` origin is listed
+/// again as `wss://` or `ws://`, so the widget can open WebSockets to the same host and port:
+/// WebView2 does not let an `http(s)` source cover WebSockets, though CSP Level 3 says it should.
+fn widget_csp(manifest: &WidgetManifest, user_origins: &[String], scripts: bool) -> String {
     let origin = if cfg!(windows) {
         format!("http://{SCHEME}.localhost")
     } else {
@@ -427,11 +432,17 @@ fn widget_csp(manifest: &WidgetManifest, scripts: bool) -> String {
     };
     let own = format!("{origin}/{}/", manifest.id);
     let sdk = format!("{origin}/{SDK_PREFIX}/");
-    let connect = if manifest.network.is_empty() {
-        "'none'".to_string()
-    } else {
-        manifest.network.join(" ")
-    };
+    let sources: Vec<String> = manifest
+        .network
+        .iter()
+        .chain(user_origins)
+        .flat_map(|origin| {
+            let socket = origin.strip_prefix("https://").map(|rest| format!("wss://{rest}"));
+            let socket = socket.or_else(|| origin.strip_prefix("http://").map(|rest| format!("ws://{rest}")));
+            std::iter::once(origin.clone()).chain(socket)
+        })
+        .collect();
+    let connect = if sources.is_empty() { "'none'".to_string() } else { sources.join(" ") };
     let script = if scripts { format!("{own} {sdk}") } else { "'none'".to_string() };
     format!(
         "default-src 'none'; script-src {script}; style-src {own} {sdk} 'unsafe-inline'; \
@@ -658,14 +669,23 @@ mod tests {
     fn csp_limits_scripts_and_network_to_the_manifest() {
         let mut m = manifest("dev.lizun.hello");
         m.network = vec!["https://api.example.com".into()];
-        let csp = widget_csp(&m, true);
+        let csp = widget_csp(&m, &[], true);
         assert!(csp.contains("default-src 'none'"));
-        assert!(csp.contains("connect-src https://api.example.com;"));
+        assert!(csp.contains("connect-src https://api.example.com wss://api.example.com;"));
         assert!(csp.contains("/dev.lizun.hello/"));
 
-        let svg = widget_csp(&m, false);
+        let user = widget_csp(&m, &["http://192.168.1.5:8123".into()], true);
+        assert!(
+            user.contains("connect-src https://api.example.com wss://api.example.com http://192.168.1.5:8123 ws://192.168.1.5:8123;"),
+            "{user}"
+        );
+        m.network.clear();
+        assert!(widget_csp(&m, &[], true).contains("connect-src 'none';"));
+        m.network = vec!["https://api.example.com".into()];
+
+        let svg = widget_csp(&m, &[], false);
         assert!(svg.contains("script-src 'none';"), "{svg}");
-        assert!(svg.contains("connect-src https://api.example.com;"));
+        assert!(svg.contains("connect-src https://api.example.com wss://api.example.com;"));
     }
 
     #[test]

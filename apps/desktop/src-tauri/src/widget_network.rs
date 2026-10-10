@@ -81,12 +81,15 @@ pub async fn widget_network_request(
     request: WidgetRequest,
 ) -> Result<WidgetResponse, String> {
     let manifest = crate::widgets::find(&app, &widget_id).ok_or("unknown widget")?;
+    // Addresses the user typed into the widget's `url` settings count as listed.
+    let mut network = manifest.network.clone();
+    network.extend(crate::widget_settings::user_origins(&app, &manifest));
     // Lizun's own browser extension server, wherever the user moved it.
     let lizun_port = crate::preferences::current(&app).browser_media_port;
     let slot = Slot::take(&widget_id)?;
     tauri::async_runtime::spawn_blocking(move || {
         let _slot = slot;
-        send(&manifest.network, request, lizun_port)
+        send(&network, request, lizun_port)
     })
     .await
     .map_err(|err| err.to_string())?
@@ -95,7 +98,7 @@ pub async fn widget_network_request(
 fn send(network: &[String], request: WidgetRequest, lizun_port: u16) -> Result<WidgetResponse, String> {
     let url = Url::parse(&request.url).map_err(|err| format!("invalid url: {err}"))?;
     if !allowed(network, &url) {
-        return Err(format!("{} is not in the network list of manifest.json", origin_of(&url)));
+        return Err(format!("{} is not in the network list of manifest.json or the widget's address settings", origin_of(&url)));
     }
     let port = url.port_or_known_default().unwrap_or(0);
     if url.scheme() == "http" && (port == lizun_port || crate::widgets::FORBIDDEN_LOOPBACK_PORTS.contains(&port)) {
@@ -171,9 +174,11 @@ fn matches(origin: &str, scheme: &str, host: &str, port: u16) -> bool {
     if origin_scheme != scheme {
         return false;
     }
-    let (pattern, origin_port) = match rest.split_once(':') {
-        Some((pattern, port)) => (pattern, port.parse::<u16>().ok()),
-        None => (rest, if scheme == "https" { Some(443) } else { Some(80) }),
+    // The last colon starts the port, unless it is inside an IPv6 address such as `[fd00::1]`.
+    let default_port = if scheme == "https" { 443 } else { 80 };
+    let (pattern, origin_port) = match rest.rsplit_once(':') {
+        Some((pattern, port)) if !port.contains(']') => (pattern, port.parse::<u16>().ok()),
+        _ => (rest, Some(default_port)),
     };
     if origin_port != Some(port) {
         return false;
@@ -213,6 +218,12 @@ mod tests {
         assert!(!check(&["https://*.example.org"], "https://example.org"));
         assert!(!check(&["https://*.example.org"], "https://badexample.org"));
         assert!(!check(&[], "https://example.org"));
+
+        // Origins from the user's address settings: local servers and IPv6 hosts.
+        assert!(check(&["http://192.168.1.5:8123"], "http://192.168.1.5:8123/api/states"));
+        assert!(check(&["http://[fd00::1]:8123"], "http://[fd00::1]:8123/"));
+        assert!(check(&["http://[fd00::1]"], "http://[fd00::1]/"));
+        assert!(!check(&["http://[fd00::1]"], "http://[fd00::1]:8080/"));
     }
 
     #[test]

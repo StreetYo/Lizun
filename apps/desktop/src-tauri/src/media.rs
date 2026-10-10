@@ -35,6 +35,8 @@ pub struct NowPlaying {
     pub can_toggle: bool,
     pub can_next: bool,
     pub can_previous: bool,
+    /// Whether the player accepts `MediaCommand::Seek`.
+    pub can_seek: bool,
 }
 
 #[derive(Debug)]
@@ -87,6 +89,9 @@ pub enum MediaCommand {
     TogglePlayPause,
     Next,
     Previous,
+    /// Jump to this position, in milliseconds from the start of the track; sent with `media_seek`.
+    #[serde(skip_deserializing)]
+    Seek(u64),
 }
 
 struct Tracked {
@@ -329,13 +334,27 @@ pub fn media_control(app: AppHandle, command: MediaCommand) -> Result<(), String
     control(&app, command)
 }
 
+/// Moves the player on the island to `position_ms`, clamped to the track's length.
+#[tauri::command]
+pub fn media_seek(app: AppHandle, position_ms: u64) -> Result<(), String> {
+    control(&app, MediaCommand::Seek(position_ms))
+}
+
 /// Sends a command to the player on the island.
 pub fn control(app: &AppHandle, command: MediaCommand) -> Result<(), String> {
     let state = app.state::<MediaState>();
-    let (source, id, playing) = {
+    let (source, id, playing, command) = {
         let arbiter = state.arbiter.lock().unwrap();
         let shown = arbiter.shown().ok_or("nothing is playing")?;
-        (shown.source, shown.player.id.clone(), shown.player.info.playing)
+        let info = &shown.player.info;
+        if matches!(command, MediaCommand::Seek(_)) && !info.can_seek {
+            return Err("this player cannot seek".into());
+        }
+        let command = match (command, info.duration_ms) {
+            (MediaCommand::Seek(position), Some(duration)) => MediaCommand::Seek(position.min(duration)),
+            (command, _) => command,
+        };
+        (shown.source, shown.player.id.clone(), info.playing, command)
     };
     match source {
         Source::System => {

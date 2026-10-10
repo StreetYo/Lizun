@@ -34,6 +34,7 @@
     type SpringParams,
   } from '../lib/spring';
   import { ui, type PanelTab } from '../lib/ui.svelte';
+  import { announceIsland } from '../lib/widgets/host';
   import DropZones from './DropZones.svelte';
   import LiveActivity from './LiveActivity.svelte';
   import Panel from './Panel.svelte';
@@ -255,6 +256,7 @@
 
   $effect(() => {
     ui.expanded = mode === 'expanded';
+    untrack(() => announceIsland(ui.expanded));
   });
 
   let openTimer: ReturnType<typeof setTimeout> | undefined;

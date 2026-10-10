@@ -17,12 +17,20 @@ The same link updates a widget that is already installed; its settings and data 
 | Widget | What it does | Permissions | Link |
 |---|---|---|---|
 | Anki | Review flash cards: your Anki decks through AnkiConnect, or decks kept in the widget | `storage`, network `http://127.0.0.1:8765`, starts Anki | [Lizun-anki](https://github.com/StreetYo/Lizun-anki) |
+| Habits | Daily habits with check-offs, streaks and the last week at a glance | `storage`, `activity` | [lizun-habits](https://github.com/StreetYo/lizun-habits) |
+| IP location | Where the internet sees you: public IP, country, city and provider, to check a VPN | `storage`, `activity`, `clipboard:write`, network `ipwho.is`, `ipapi.co`, `ipinfo.io`, `api6.ipify.org` | [lizun-ip-location](https://github.com/StreetYo/lizun-ip-location) |
+| Lyrics | Synced lyrics of the current track from LRCLIB; click a line to jump to it | `media:read`, `media:control`, `storage`, network `lrclib.net` | [lizun-lyrics](https://github.com/StreetYo/lizun-lyrics) |
 | Notepad | A note you can write and edit right in the island | `storage` | [lizun-notepad](https://github.com/StreetYo/lizun-notepad) |
+| Pomodoro | Focus and break timer with the countdown in the closed island; can pause music on breaks | `storage`, `activity`, `media:read`, `media:control` | [lizun-pomodoro](https://github.com/StreetYo/lizun-pomodoro) |
+| System monitor | Processor, graphics, memory, disk, network and battery load; temperatures from LibreHardwareMonitor | `system`, `activity`, network `http://localhost:8085` | [lizun-system-monitor](https://github.com/StreetYo/lizun-system-monitor) |
+| Weather | Current weather and the next hours from Open-Meteo, for a city you pick | `storage`, `activity`, network `api.open-meteo.com`, `geocoding-api.open-meteo.com` | [lizun-weather](https://github.com/StreetYo/lizun-weather) |
 
 Permissions: `storage` keeps the widget's data on this computer, `media:read` and
 `media:control` see and control what is playing, `activity` shows something in the closed
-island. A widget may also reach the network, only the sites its manifest lists, and start
-programs its manifest names; Lizun shows them before installing.
+island, `system` sees how busy the computer is, `links` opens links in the browser and
+`clipboard:write` copies text, the last two only when you click the widget. A widget may also
+reach the network, only the sites its manifest lists and the addresses you enter in its
+settings, and start programs its manifest names; Lizun shows them before installing.
 
 ## Adding your widget
 

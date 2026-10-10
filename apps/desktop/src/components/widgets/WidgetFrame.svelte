@@ -3,6 +3,7 @@
   import { WIDGET_ORIGIN } from '../../lib/platform';
   import { attachWidget } from '../../lib/widgets/host';
   import type { WidgetManifest } from '../../lib/widgets/registry.svelte';
+  import { widgetSettings } from '../../lib/widgets/settings.svelte';
 
   let { widget }: { widget: WidgetManifest } = $props();
 
@@ -29,6 +30,15 @@
     }
   }
 
+  // The addresses in the widget's `url` settings are part of its page's CSP, which the frame
+  // keeps until its page loads again: when one changes, the widget starts over with the new one.
+  const addresses = $derived(
+    widget.settings
+      .filter((setting) => setting.type === 'url')
+      .map((setting) => String(widgetSettings.values[widget.id]?.[setting.key] ?? setting.default))
+      .join(' '),
+  );
+
   // A plain copy: reactive proxies cannot be sent through postMessage.
   const attach = (iframe: HTMLIFrameElement) => untrack(() => attachWidget(iframe, $state.snapshot(widget), restart));
 </script>
@@ -38,7 +48,7 @@
   no access to the island page, its storage, or the Tauri IPC. A new frame is created for each
   restart, because the bridge tells frames apart by their window, which survives navigation.
 -->
-{#key restarts}
+{#key `${restarts} ${addresses}`}
   {#if gaveUp}
     <div style:width="{widget.width}px"></div>
   {:else}

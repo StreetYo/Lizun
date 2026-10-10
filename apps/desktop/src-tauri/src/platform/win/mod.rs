@@ -2,6 +2,8 @@ mod apps;
 mod clipboard;
 mod hotkeys;
 mod media;
+mod secrets;
+mod system;
 mod window;
 
 use std::path::Path;
@@ -12,6 +14,8 @@ pub use clipboard::{
 };
 pub use hotkeys::{HotkeyListener, spawn_hotkey_listener};
 pub use media::{MediaController, spawn_media_watcher};
+pub use secrets::{protect, unprotect};
+pub use system::SystemSampler;
 pub use window::{
     on_deactivated, prepare_island_window, release_keyboard, set_hit_region, show_without_activation, take_keyboard,
 };
@@ -19,6 +23,18 @@ pub use window::{
 /// Opens the folder in Explorer.
 pub fn reveal_folder(path: &Path) -> std::io::Result<()> {
     std::process::Command::new("explorer").arg(path).spawn().map(|_| ())
+}
+
+/// Opens a web link in the default browser. The caller checks that it is an http(s) link.
+pub fn open_url(url: &str) -> Result<(), String> {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{HSTRING, PCWSTR, w};
+
+    // SAFETY: both strings outlive the call; no window owns the request.
+    let result = unsafe { ShellExecuteW(None, w!("open"), &HSTRING::from(url), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL) };
+    // Values above 32 mean success.
+    if result.0 as isize > 32 { Ok(()) } else { Err(format!("the link could not be opened (error {})", result.0 as isize)) }
 }
 
 /// The IANA name of the time zone set in Windows right now. Read anew on every call, so a

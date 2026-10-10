@@ -67,12 +67,24 @@ fn widget_dir<R: Runtime>(app: &AppHandle<R>, widget_id: &str) -> Result<PathBuf
     Ok(data.join(DIR_NAME).join(widget_id))
 }
 
+/// Keys up to this many UTF-8 bytes are named by their hex; the name stays under the 255
+/// characters a file name may have.
+const MAX_HEX_KEY_BYTES: usize = 100;
+
 /// The key's file: its UTF-8 bytes in hex, so any key is a valid file name on every system.
+/// Longer keys (128 Cyrillic letters are 256 bytes) are named by their SHA-256 instead, after a
+/// `~` that no hex name has.
 fn key_path(dir: &Path, key: &str) -> Result<PathBuf, String> {
+    use sha2::{Digest, Sha256};
     if key.is_empty() || key.chars().count() > MAX_KEY_CHARS {
         return Err("invalid storage key".into());
     }
-    let name: String = key.bytes().map(|b| format!("{b:02x}")).collect();
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let name = if key.len() <= MAX_HEX_KEY_BYTES {
+        hex(key.as_bytes())
+    } else {
+        format!("~{}", hex(&Sha256::digest(key.as_bytes())))
+    };
     Ok(dir.join(format!("{name}.json")))
 }
 
@@ -138,6 +150,20 @@ mod tests {
         remove(&dir, "deck").unwrap();
         assert_eq!(read(&dir, "deck").unwrap(), None);
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn keeps_the_longest_keys() {
+        let dir = temp_dir("long keys");
+        let cyrillic = "я".repeat(MAX_KEY_CHARS);
+        let ascii = "k".repeat(MAX_KEY_CHARS);
+        write(&dir, &cyrillic, "1").unwrap();
+        write(&dir, &ascii, "2").unwrap();
+        write(&dir, &"k".repeat(MAX_HEX_KEY_BYTES), "3").unwrap();
+        assert_eq!(read(&dir, &cyrillic).unwrap().as_deref(), Some("1"));
+        assert_eq!(read(&dir, &ascii).unwrap().as_deref(), Some("2"));
+        assert_eq!(read(&dir, &"k".repeat(MAX_HEX_KEY_BYTES)).unwrap().as_deref(), Some("3"));
         fs::remove_dir_all(&dir).unwrap();
     }
 

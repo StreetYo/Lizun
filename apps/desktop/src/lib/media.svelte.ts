@@ -13,6 +13,7 @@ export interface NowPlaying {
   canToggle: boolean;
   canNext: boolean;
   canPrevious: boolean;
+  canSeek: boolean;
 }
 
 export type MediaCommand = 'togglePlayPause' | 'next' | 'previous';
@@ -62,6 +63,11 @@ class MediaStore {
 
   control(command: MediaCommand): Promise<void> {
     return invoke<void>('media_control', { command });
+  }
+
+  /** Moves the shown player to `positionMs`; fails when it cannot seek. */
+  seek(positionMs: number): Promise<void> {
+    return invoke<void>('media_seek', { positionMs });
   }
 
   /** Playback position at `now`, advanced from the last sample while playing. */

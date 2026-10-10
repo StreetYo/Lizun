@@ -35,7 +35,7 @@ my-widget/
 | `author`, `description` | Optional, up to 60 and 200 characters. |
 | `entry` | HTML file to load (default `index.html`); it must end in `.html` or `.htm`. |
 | `width` | Column width in logical pixels, 120–640 (default 240). |
-| `permissions` | `media:read`, `media:control`, `storage`, `activity`, each listed once. Anything else is rejected. |
+| `permissions` | `media:read`, `media:control`, `storage`, `activity`, `system`, `links`, `clipboard:write`, each listed once. Anything else is rejected. See [Permissions](#permissions). |
 | `network` | Origins the widget may reach, each listed once: `https://host[:port]`, or `http://127.0.0.1:port` and `http://localhost:port` for a program on this computer. `https://*.example.com` covers the subdomains; a wildcard needs at least two labels after it, so `*.com` is rejected. Empty means no network. See [Network](#network). |
 | `apps` | Programs the widget may start, see [Starting a program](#starting-a-program). |
 | `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
@@ -69,6 +69,44 @@ await storage.set('count', count + 1);
 
 Calls without the needed permission reject with a `LizunError` whose `code` is
 `permission_denied`. Types are in `packages/widget-sdk/src/index.ts`.
+
+### Permissions
+
+| Permission | Lets the widget |
+|---|---|
+| `media:read` | See what is playing: `media.getNowPlaying()`, `media.subscribe()`. |
+| `media:control` | Play, pause, skip and seek: `media.togglePlayPause()`, `next()`, `previous()`, `seek(positionMs)`. |
+| `storage` | Keep data, see [Storage](#storage). |
+| `activity` | Show something in the closed island, see [Live activity](#live-activity). |
+| `system` | Read the computer's load, see [System load](#system-load). |
+| `links` | Open web links in the browser, see [Links and the clipboard](#links-and-the-clipboard). |
+| `clipboard:write` | Put text on the clipboard, same section. |
+
+### Media
+
+`media.subscribe` calls the listener when the track, its state or its position changes, not
+every second: between events, advance `positionMs` yourself while `playing` is true.
+`media.seek(positionMs)` jumps within the current track when `canSeek` is true; players without
+a timeline, such as live streams, cannot seek.
+
+### Island open or closed
+
+Closing the island fades its panel but does not hide the widget pages, so `visibilitychange`
+does not fire in them. `ready()` returns `islandOpen`, and `island.subscribe` reports changes:
+
+```js
+import { island, ready } from '/__sdk/index.js';
+
+const context = await ready();
+let open = context.islandOpen;
+island.subscribe((state) => {
+  open = state.open;
+  if (open) refreshIfStale();
+});
+```
+
+Refresh what the user is about to look at when the island opens, and stop polling while it is
+closed unless the widget's live activity needs the data.
 
 ## Storage
 
@@ -124,6 +162,20 @@ Plain HTTP is allowed only to `127.0.0.1` and `localhost`, with a port. Settings
 origin as talking to a program on this computer. Ports where a debugger, Docker or Lizun itself
 listens (2375, 2376, 6869, 9222, 9229 and Lizun's browser extension port) are refused. Why it
 works this way is in [ADR 0010](adr/0010-widget-network-and-storage.md).
+
+**WebSockets** go to the same origins: an `https://` origin also allows `wss://` to the same host
+and port, and an `http://` one allows `ws://`, so `new WebSocket('ws://127.0.0.1:4455')` works
+with `http://127.0.0.1:4455` in `network`. The widget's page opens the socket itself, so it sends
+`Origin: null`; a server that checks the origin has to accept that.
+
+**Addresses the user enters.** A widget for a server only the user knows, such as their Home
+Assistant, an RSS feed or a NAS, declares a [`url` setting](#settings) instead of listing the
+server in `network`. The address the user types there can be reached as if it were in `network`,
+by `fetch`, WebSocket and `network.request`, including plain HTTP on the local network: private
+addresses such as `192.168.1.5` and `10.0.0.2`, `100.64.0.0/10` used by mesh VPNs such as
+Tailscale, local IPv6 addresses, and names such as `nas` or `homeassistant.local`. Settings
+show such a widget as "Talks to the addresses you enter in its settings". When the user changes
+the address, the widget starts over so its page gets the new one.
 
 ## Starting a program
 
@@ -197,10 +249,10 @@ Every setting has these fields:
 | Field | Meaning |
 |---|---|
 | `key` | Name the widget reads the value by: a letter, then up to 31 letters, digits or `_`. Unique within the widget. |
-| `type` | `toggle`, `number`, `select` or `text`. |
+| `type` | `toggle`, `number`, `select`, `text`, `url` or `secret`. |
 | `label` | Shown next to the control, up to 60 characters. |
 | `description` | Optional hint under the label, up to 200 characters. |
-| `default` | Required. The value until the user changes it; it must be valid for the type. |
+| `default` | The value until the user changes it; it must be valid for the type. Required, except for `url` (`""` when left out) and `secret` (which has none). |
 
 Types and their extra fields:
 
@@ -210,6 +262,19 @@ Types and their extra fields:
 | `number` | number | `min` and `max` (required), `step` (default 1), `unit` (optional label such as `s` or `min`, up to 10 characters) |
 | `select` | one of the option values | `options`: 2–20 `{ "value": string, "label": string }`; values are 1–64 characters and unique, labels up to 60 |
 | `text` | string | `maxLength` (1–500, default 100), `placeholder` (optional, up to 100 characters) |
+| `url` | `""` or the address as Lizun normalized it, such as `http://192.168.1.5:8123/` | `placeholder` (optional) |
+| `secret` | `""` until set, then the text the user entered (up to 4 KB) | `placeholder` (optional) |
+
+A `url` setting takes `https://` addresses anywhere, and `http://` only on this computer and the
+local network (see [Network](#network)); an address typed without a scheme is read as
+`https://`. Lizun refuses anything else when the user enters it, and the widget may reach the
+address's origin. A `default` has to be written the way Lizun normalizes it, such as
+`https://example.com/`.
+
+A `secret` setting is for tokens and passwords. The settings window shows a password field and
+never shows the saved value: typing replaces it, and a button clears it. It is stored encrypted
+for the Windows user (DPAPI), so it cannot be read from a copied or synced settings file. The
+widget gets it in plain text.
 
 A widget may declare up to 32 settings, shown in the manifest order. A manifest whose settings
 break these rules is rejected like any other invalid manifest, and the reason is logged.
@@ -383,6 +448,48 @@ keyboard.release();
 The bundled To-do widget (`apps/desktop/bundled-widgets/todo`) is a complete example: Enter adds
 a task and keeps the field ready for the next one, Enter in an empty field gives the keyboard
 back. Why the island works this way is in [ADR 0003](adr/0003-keyboard-on-demand.md).
+
+## System load
+
+With the `system` permission, `system.stats()` tells how busy the computer is:
+
+```js
+import { system } from '/__sdk/index.js';
+
+const stats = await system.stats();
+// stats.cpu.usage (0–100), stats.cpu.cores (each logical processor), stats.cpu.name
+// stats.memory.totalBytes, stats.memory.usedBytes
+// stats.gpu?.usage (gpu is null when it cannot be measured)
+// stats.battery?.percent, .charging, .pluggedIn, .secondsLeft (battery is null without one)
+// stats.disks: [{ mount: 'C:', label: 'Windows', totalBytes, freeBytes }]
+// stats.network.downBytesPerSec, stats.network.upBytesPerSec
+// stats.uptimeSec
+```
+
+Processor and graphics usage are what Task Manager shows: the processor's "% Processor Utility"
+and the busiest graphics engine summed over processes. Network rates count the computer's
+hardware adapters only, so traffic through a VPN is not counted twice. Usages and rates are
+measured since the previous sample, and one sample serves all widgets for half a second: poll
+every one to a few seconds, and while the island is closed only if the live activity shows a
+value. Temperatures and fan speeds need administrator rights on Windows, so they are not part
+of it.
+
+## Links and the clipboard
+
+`links.open(url)` (permission `links`) opens an `http` or `https` link in the default browser.
+`clipboard.writeText(text)` (permission `clipboard:write`) puts up to 1 MB of text on the
+clipboard. Both act outside the widget, so they work only from a click: while the island is open
+and the pointer is on the widget, like taking the keyboard. Otherwise, or more often than twice
+a second, they reject with a `LizunError`.
+
+```js
+import { clipboard, links } from '/__sdk/index.js';
+
+ipButton.addEventListener('click', () => clipboard.writeText(ip));
+headline.addEventListener('click', () => links.open(article.url));
+```
+
+Why they work this way is in [ADR 0012](adr/0012-widget-capabilities.md).
 
 ## Sandbox
 

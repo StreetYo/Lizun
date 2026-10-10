@@ -133,6 +133,7 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
         canToggle: true,
         canNext: true,
         canPrevious: true,
+        canSeek: true,
       } as T;
     case 'media_artwork':
       return sampleArtwork() as T;

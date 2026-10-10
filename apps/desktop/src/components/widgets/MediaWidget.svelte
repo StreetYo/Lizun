@@ -35,6 +35,14 @@
     media.control(command).catch((err) => console.warn('media control', err));
   }
 
+  /** A click on the progress bar jumps there, for players that allow it. */
+  function seek(event: MouseEvent): void {
+    if (!duration || !media.nowPlaying?.canSeek) return;
+    const bar = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (event.clientX - bar.left) / bar.width));
+    media.seek(Math.round(fraction * duration)).catch((err) => console.warn('media seek', err));
+  }
+
   // With several players (music in one tab, a video in another, Spotify...), the switcher
   // steps through them in a fixed order.
   const shownIndex = $derived(media.players.findIndex((p) => p.shown));
@@ -88,7 +96,10 @@
     </div>
     {#if duration}
       <div class="progress">
-        <div class="track"><div class="fill" style:width="{progress * 100}%"></div></div>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        <div class="bar" class:seekable={np.canSeek} onclick={seek}>
+          <div class="track"><div class="fill" style:width="{progress * 100}%"></div></div>
+        </div>
         <div class="times">
           <span>{formatTime(position ?? 0)}</span>
           <span>{formatTime(duration)}</span>
@@ -207,6 +218,16 @@
 
   .progress {
     margin-top: 10px;
+  }
+
+  /* Taller than the track, so it is easy to hit. */
+  .bar {
+    padding: 4px 0;
+    margin: -4px 0;
+  }
+
+  .bar.seekable {
+    cursor: pointer;
   }
 
   .track {

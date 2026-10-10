@@ -33,6 +33,7 @@ chrono = "0.4"
 chrono-tz = "0.10"
 rrule = "0.14"
 png = "0.18"
+sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 windows-future = "0.3"
@@ -43,12 +44,21 @@ windows = { version = "0.62.2", features = [
   "Win32_Foundation",
   "Win32_Globalization",
   "Win32_Graphics_Gdi",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
   "Win32_Security",
+  "Win32_Security_Cryptography",
+  "Win32_Storage_FileSystem",
   "Win32_System_Com",
   "Win32_System_DataExchange",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_LibraryLoader",
   "Win32_System_Memory",
+  "Win32_System_Performance",
+  "Win32_System_Power",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_System_Time",
   "Win32_UI_Accessibility",

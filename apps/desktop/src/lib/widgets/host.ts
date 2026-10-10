@@ -62,6 +62,7 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
       theme: THEME,
       settings: widgetSettings.of(widget),
       language: i18n.language,
+      islandOpen: ui.expanded,
     }),
   },
   // A widget's own settings need no permission; only the user can change them.
@@ -79,6 +80,36 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
       const command = params.command as MediaCommand;
       if (!['togglePlayPause', 'next', 'previous'].includes(command)) throw new Error('unknown command');
       return media.control(command);
+    },
+  },
+  'media.seek': {
+    permission: 'media:control',
+    handler: (_frame, params) => {
+      const position = Number(params.positionMs);
+      if (!Number.isFinite(position) || position < 0) throw new Error('positionMs must be a number of milliseconds');
+      return media.seek(Math.round(position));
+    },
+  },
+  // Measured by the core (src-tauri/src/system_stats.rs), which checks the permission again.
+  'system.stats': {
+    permission: 'system',
+    handler: ({ widget }) => invoke('widget_system_stats', { widgetId: widget.id }),
+  },
+  // Both act outside the widget, so only for a click on it (see `mayAct`); the core checks the
+  // link, the permission and how often (src-tauri/src/widget_actions.rs).
+  'links.open': {
+    permission: 'links',
+    handler: (frame, params) => {
+      if (!mayAct(frame)) throw new Refusal('not_allowed', 'links open only from a click on the open widget');
+      return invoke('widget_open_link', { widgetId: frame.widget.id, url: String(params.url) });
+    },
+  },
+  'clipboard.writeText': {
+    permission: 'clipboard:write',
+    handler: (frame, params) => {
+      if (!mayAct(frame)) throw new Refusal('not_allowed', 'the clipboard is written only from a click on the open widget');
+      if (typeof params.text !== 'string') throw new Error('text must be a string');
+      return invoke('widget_clipboard_write', { widgetId: frame.widget.id, text: params.text });
     },
   },
   // Values are files kept by the core (src-tauri/src/widget_storage.rs), which checks keys and sizes.
@@ -193,6 +224,15 @@ function moveLegacyValues(widget: WidgetManifest): Promise<void> {
  * a short grace for a request that arrives just after the pointer moved away.
  */
 function mayTakeKeyboard(frame: Frame): boolean {
+  return mayAct(frame);
+}
+
+/**
+ * Whether the user is working with the widget right now: the island is open and the pointer is
+ * on the widget, or just left it. Required for anything a widget does outside its frame on the
+ * user's behalf, such as taking the keyboard, opening a link or writing the clipboard.
+ */
+function mayAct(frame: Frame): boolean {
   return ui.expanded && (frame.pointerOver || Date.now() - frame.pointerLeftAt < KEYBOARD_GRACE_MS);
 }
 
@@ -237,6 +277,17 @@ async function handleMessage(event: MessageEvent): Promise<void> {
 }
 
 let listening = false;
+let announcedOpen = false;
+
+/**
+ * Tells every widget that the island opened or closed. The island only fades its panel, so the
+ * widget pages stay visible to the browser and `visibilitychange` never fires in them.
+ */
+export function announceIsland(open: boolean): void {
+  if (open === announcedOpen) return;
+  announcedOpen = open;
+  for (const frame of frames.values()) send(frame, { kind: 'event', name: 'island.changed', payload: { open } });
+}
 
 /**
  * Connects a widget iframe to the SDK bridge; returns a function that disconnects it.

@@ -57,6 +57,9 @@
     'media:control': 'settings.permissions.mediaControl',
     storage: 'settings.permissions.storage',
     activity: 'settings.permissions.activity',
+    system: 'settings.permissions.system',
+    links: 'settings.permissions.links',
+    'clipboard:write': 'settings.permissions.clipboardWrite',
   };
 
   let section = $state<Section>('general');
@@ -532,7 +535,11 @@
     {#each widget.apps ?? [] as app (app.id)}
       <span class="chip strong">{t('settings.permissions.app', { name: app.name })}</span>
     {/each}
-    {#if !widget.permissions.length && !widget.network.length && !widget.apps?.length}
+    <!-- Addresses typed into its settings are reachable too; the user chooses them. -->
+    {#if widget.settings.some((setting) => setting.type === 'url')}
+      <span class="chip strong">{t('settings.permissions.userAddress')}</span>
+    {/if}
+    {#if !widget.permissions.length && !widget.network.length && !widget.apps?.length && !widget.settings.some((setting) => setting.type === 'url')}
       <span class="chip">{t('settings.permissions.none')}</span>
     {/if}
   </div>
@@ -574,6 +581,40 @@
           <option value={option.value}>{option.label}</option>
         {/each}
       </select>
+    {:else if setting.type === 'url'}
+      <input
+        {id}
+        class="text-input"
+        type="text"
+        inputmode="url"
+        spellcheck="false"
+        placeholder={setting.placeholder}
+        title={String(value)}
+        {value}
+        onchange={(event) => setWidgetSetting(widget, setting.key, event.currentTarget.value)}
+      />
+    {:else if setting.type === 'secret'}
+      <!-- The saved secret is never put back into the field; typing replaces it. -->
+      <span class="picker">
+        <input
+          {id}
+          class="text-input"
+          type="password"
+          autocomplete="off"
+          placeholder={value ? t('settings.widgets.secretSaved') : setting.placeholder}
+          value=""
+          onchange={(event) => {
+            const typed = event.currentTarget.value;
+            event.currentTarget.value = '';
+            if (typed) void setWidgetSetting(widget, setting.key, typed);
+          }}
+        />
+        {#if value}
+          <button class="secondary compact" onclick={() => setWidgetSetting(widget, setting.key, '')}>
+            {t('settings.widgets.secretClear')}
+          </button>
+        {/if}
+      </span>
     {:else}
       <span class="picker">
         <input
