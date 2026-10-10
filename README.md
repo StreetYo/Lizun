@@ -10,9 +10,10 @@ list, and widgets anyone can write and install.
 
 ## Download
 
-Get `Lizun_*_x64-setup.exe` from the [latest release](https://github.com/StreetYo/Lizun/releases/latest)
-and run it (Windows 10/11). The installer is not signed yet, so SmartScreen may warn about it:
-click **More info**, then **Run anyway**.
+Download Lizun for Windows 10/11 from the [latest release](https://github.com/StreetYo/Lizun/releases/latest):
+`Lizun_*_x64-setup.exe` is the installer for most people; an MSI for managed installs and a
+portable zip are there too. The files are not code-signed yet, so SmartScreen may warn about
+them: click **More info**, then **Run anyway**.
 
 ## What works today (Windows)
 

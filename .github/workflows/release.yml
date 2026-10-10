@@ -1,20 +1,38 @@
-# Builds the Windows installer and publishes it as a GitHub release when a version tag
-# (v0.1.0, ...) is pushed. The tag should match the version in tauri.conf.json.
+# Builds Lizun for Windows and publishes a GitHub release when a version tag (v0.1.0, ...) is
+# pushed. The tag must match the version in tauri.conf.json. Run it by hand with an existing
+# tag to rebuild that release; files with the same names are replaced.
+#
+# Files: the NSIS installer (for most people), an MSI (managed installs), a portable zip and
+# SHA256SUMS.txt.
 name: Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build, such as v0.1.0
+        required: true
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: pnpm/action-setup@v4
 
@@ -29,24 +47,46 @@ jobs:
         with:
           workspaces: '. -> target'
 
+      - name: Check the tag against the app version
+        run: |
+          $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne $env:TAG) { throw "Tag $env:TAG does not match version $version in tauri.conf.json" }
+          "VERSION=$version" >> $env:GITHUB_ENV
+
       - run: pnpm install --frozen-lockfile
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build
+        run: pnpm --filter @lizun/desktop tauri build --bundles nsis,msi
+
+      - name: Collect the files
+        run: |
+          $out = New-Item -ItemType Directory -Force out
+          Copy-Item target/release/bundle/nsis/*.exe $out
+          Copy-Item target/release/bundle/msi/*.msi $out
+
+          # Portable: the program with its resources next to it, laid out as the installer does.
+          $portable = New-Item -ItemType Directory -Force portable/Lizun
+          Copy-Item target/release/lizun.exe "$portable/Lizun.exe"
+          Copy-Item -Recurse target/release/widget-sdk, target/release/bundled-widgets $portable
+          Copy-Item LICENSE-MIT, LICENSE-APACHE $portable
+          Compress-Archive -Path $portable -DestinationPath "$out/Lizun_${env:VERSION}_x64_portable.zip"
+
+          $sums = Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          }
+          Set-Content -Path "$out/SHA256SUMS.txt" -Value $sums -Encoding ascii
+          Get-Content "$out/SHA256SUMS.txt"
+
+      - name: Publish the release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: Lizun ${{ github.ref_name }}
-          prerelease: true
-          releaseDraft: false
-          releaseBody: |
-            Early prototype for Windows 10/11.
-
-            **Install:** download `Lizun_*_x64-setup.exe` below and run it. The installer is not
-            signed yet, so Windows SmartScreen may warn about it: click **More info**, then
-            **Run anyway**. Lizun needs the WebView2 runtime, which Windows 11 already has; the
-            installer gets it on Windows 10 if it is missing.
-
-            After installing, the island appears at the top of the screen and Lizun has an icon
-            in the tray. What works so far is listed in the [README](https://github.com/StreetYo/Lizun#what-works-today-windows).
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $title = "Lizun $env:TAG"
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $env:TAG --title $title --notes-file .github/release-notes.md --prerelease
+          } else {
+            gh release create $env:TAG --verify-tag --title $title --notes-file .github/release-notes.md --prerelease
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          gh release upload $env:TAG (Get-ChildItem out -File).FullName --clobber
