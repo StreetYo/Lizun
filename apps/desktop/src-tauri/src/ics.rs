@@ -8,20 +8,30 @@
 
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::str::FromStr;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone, Utc};
-use rrule::{RRule, RRuleSet, Tz, Unvalidated};
+use rrule::{Frequency, RRule, RRuleSet, Tz, Unvalidated};
 use serde::Serialize;
 
 /// Most occurrences one recurring event produces in the window.
-const MAX_OCCURRENCES: u16 = 500;
+const MAX_OCCURRENCES: usize = 500;
 /// Most events returned for the window.
 const MAX_EVENTS: usize = 2_000;
 /// Most VEVENTs read from one feed. Calendars with years of history have a few thousand.
 const MAX_COMPONENTS: usize = 50_000;
-/// Most occurrences of all events together considered for the window, so that a feed full of
-/// events repeating every minute cannot take all the memory.
-const MAX_TOTAL_OCCURRENCES: usize = 200_000;
+/// Most occurrences one recurring event is stepped through, counting those before the window: a
+/// weekly meeting since 2000 has about 1,400. Rules that repeat at a fixed step, such as every
+/// day or every hour, skip ahead to the window instead.
+const MAX_STEPS: usize = 100_000;
+/// Most occurrences of all recurring events together stepped through for one feed; recurring
+/// events left after that are not shown.
+const MAX_TOTAL_STEPS: usize = 2_000_000;
+/// The same for the time expanding the recurring events of one feed takes.
+const MAX_EXPANSION_TIME: Duration = Duration::from_secs(5);
+/// Most times of day a daily or longer rule lists with BYHOUR, BYMINUTE and BYSECOND together;
+/// each of them is made for every day of a period at once.
+const MAX_TIMES_OF_DAY: usize = 60;
 /// Most dates one event lists in RDATE or in EXDATE.
 const MAX_DATES: usize = 10_000;
 /// Titles and places are cut to this many characters; the island shows one line of each.
@@ -57,16 +67,10 @@ pub fn events_between(text: &str, from: DateTime<Utc>, to: DateTime<Utc>, local:
     // key and the index of their component; the events are made from those at the end.
     let (from_ms, to_ms) = (from.timestamp_millis(), to.timestamp_millis());
     let mut earliest: BinaryHeap<(i64, bool, i64, usize)> = BinaryHeap::with_capacity(MAX_EVENTS + 1);
-    let mut budget = MAX_TOTAL_OCCURRENCES;
+    let mut budget = Budget { steps: MAX_TOTAL_STEPS, deadline: Instant::now() + MAX_EXPANSION_TIME };
     for (index, component) in components.iter().enumerate().filter(|(_, c)| !c.cancelled) {
-        if budget == 0 {
-            log::warn!("the calendar feed has too many occurrences of events; the rest are left out");
-            break;
-        }
         let skip = component.recurrence_id.is_none().then(|| replaced.get(component.uid.as_str())).flatten();
-        let starts = component.starts(from, to);
-        budget = budget.saturating_sub(starts.len());
-        for start in starts {
+        for start in component.starts(from, to, &mut budget) {
             let start_ms = start.timestamp_millis();
             if skip.is_some_and(|skip| skip.contains(&start_ms)) {
                 continue;
@@ -92,6 +96,39 @@ pub fn events_between(text: &str, from: DateTime<Utc>, to: DateTime<Utc>, local:
             all_day: !timed,
         })
         .collect()
+}
+
+/// What is left of the work allowed for expanding the recurring events of one feed.
+struct Budget {
+    steps: usize,
+    deadline: Instant,
+}
+
+impl Budget {
+    /// False once the steps or the time have run out.
+    fn left(&mut self) -> bool {
+        if self.steps > 0 && Instant::now() >= self.deadline {
+            self.steps = 0;
+            Self::ran_out();
+        }
+        self.steps > 0
+    }
+
+    /// Takes one step; false once the steps or the time have run out.
+    fn step(&mut self) -> bool {
+        if self.steps.is_multiple_of(1024) && !self.left() {
+            return false;
+        }
+        self.steps -= 1;
+        if self.steps == 0 {
+            Self::ran_out();
+        }
+        true
+    }
+
+    fn ran_out() {
+        log::warn!("the recurring events of the calendar feed take too long to expand; the rest are left out");
+    }
 }
 
 /// One content line, such as `DTSTART;TZID=Europe/Moscow:20261009T100000`.
@@ -408,8 +445,9 @@ impl Component {
         }
     }
 
-    /// Start times of the occurrences that can overlap `from..to`.
-    fn starts(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<DateTime<Tz>> {
+    /// Start times of the occurrences that can overlap `from..to`. Stepping through the
+    /// occurrences of a recurring event takes from `budget`.
+    fn starts(&self, from: DateTime<Utc>, to: DateTime<Utc>, budget: &mut Budget) -> Vec<DateTime<Tz>> {
         // An occurrence that starts before the window can last into it.
         let longest = match self.length {
             Length::Days(days) => TimeDelta::try_days(days as i64 + 1),
@@ -423,11 +461,29 @@ impl Component {
             starts.retain(within);
             return starts;
         };
-        match self.rule_set(rule) {
+        // A rule that never matches can look for its next occurrence for a long time.
+        if !budget.left() {
+            return Vec::new();
+        }
+        match self.rule_set(rule, after) {
             Ok(set) => {
-                let set = set.after(after.with_timezone(&Tz::UTC)).before(to.with_timezone(&Tz::UTC));
-                let mut starts = set.all(MAX_OCCURRENCES).dates;
-                starts.retain(within);
+                // The occurrences come in order, from the first one on.
+                let mut starts = Vec::new();
+                let set = set.limit();
+                for (steps, start) in set.into_iter().enumerate() {
+                    if start >= to || starts.len() == MAX_OCCURRENCES || !budget.step() {
+                        break;
+                    }
+                    if steps == MAX_STEPS {
+                        log::warn!(
+                            "a recurring event in the calendar feed repeats too often; only its first {MAX_STEPS} occurrences are read"
+                        );
+                        break;
+                    }
+                    if within(&start) {
+                        starts.push(start);
+                    }
+                }
                 starts
             }
             Err(err) => {
@@ -437,7 +493,9 @@ impl Component {
         }
     }
 
-    fn rule_set(&self, rule: &str) -> Result<RRuleSet, String> {
+    /// The rule with its exceptions. Its start is moved ahead towards `after` when that changes
+    /// no occurrence from `after` on.
+    fn rule_set(&self, rule: &str, after: DateTime<Utc>) -> Result<RRuleSet, String> {
         // UNTIL is read here: feeds write it in local time or as a date more often than the rrule
         // crate accepts.
         let mut until = None;
@@ -452,11 +510,15 @@ impl Component {
             })
             .collect();
         let mut rrule: RRule<Unvalidated> = parts.join(";").parse().map_err(|err: rrule::RRuleError| err.to_string())?;
+        check_work(&rrule)?;
+        let mut skip_to = after;
         if let Some(until) = until {
             let until = self.until(until).ok_or_else(|| format!("unreadable UNTIL {until:?}"))?;
             rrule = rrule.until(until.with_timezone(&Tz::UTC));
+            skip_to = skip_to.min(until.with_timezone(&Utc));
         }
-        let set = rrule.build(self.start.at).map_err(|err| err.to_string())?;
+        let start = skip_ahead(&rrule, self.start.at, skip_to);
+        let set = rrule.build(start).map_err(|err| err.to_string())?;
         Ok(set.set_rdates(self.rdates.clone()).set_exdates(self.exdates.clone()))
     }
 
@@ -469,6 +531,70 @@ impl Component {
         }
         parse_value(value, false, Some(zone), zone).map(|time| time.at)
     }
+}
+
+/// Refuses rules that make the rrule crate do a lot of work for each occurrence. No calendar
+/// service writes them.
+fn check_work(rrule: &RRule<Unvalidated>) -> Result<(), String> {
+    let (hours, minutes, seconds) =
+        (rrule.get_by_hour().len(), rrule.get_by_minute().len(), rrule.get_by_second().len());
+    if rrule.get_freq() > Frequency::Daily && hours + minutes + seconds > 0 {
+        // Finding the next matching time steps through every hour, minute or second.
+        return Err("BYHOUR, BYMINUTE or BYSECOND in a rule repeating more often than daily".into());
+    }
+    if hours.max(1) * minutes.max(1) * seconds.max(1) > MAX_TIMES_OF_DAY {
+        return Err("too many times of day".into());
+    }
+    Ok(())
+}
+
+/// A later start for a rule that repeats at a fixed step, with the same occurrences from `target`
+/// on, so that expanding it does not walk through every occurrence since a start years before.
+/// These are rules without COUNT, which counts from the first start, and without BY* parts:
+/// their occurrences are the start plus whole multiples of the step, in local time.
+fn skip_ahead(rrule: &RRule<Unvalidated>, start: DateTime<Tz>, target: DateTime<Utc>) -> DateTime<Tz> {
+    let period = match rrule.get_freq() {
+        Frequency::Secondly => 1,
+        Frequency::Minutely => 60,
+        Frequency::Hourly => 3_600,
+        Frequency::Daily => 86_400,
+        Frequency::Weekly => 7 * 86_400,
+        Frequency::Monthly | Frequency::Yearly => return start,
+    };
+    let fixed = rrule.get_count().is_none()
+        && rrule.get_interval() > 0
+        && rrule.get_by_set_pos().is_empty()
+        && rrule.get_by_month().is_empty()
+        && rrule.get_by_month_day().is_empty()
+        && rrule.get_by_year_day().is_empty()
+        && rrule.get_by_week_no().is_empty()
+        && rrule.get_by_weekday().is_empty()
+        && rrule.get_by_hour().is_empty()
+        && rrule.get_by_minute().is_empty()
+        && rrule.get_by_second().is_empty();
+    if !fixed || target <= start {
+        return start;
+    }
+    let step = period * i64::from(rrule.get_interval());
+    let zone = start.timezone();
+    let mut steps = target.signed_duration_since(start).num_seconds() / step;
+    for _ in 0..8 {
+        if steps <= 0 {
+            break;
+        }
+        let later = TimeDelta::try_seconds(steps * step)
+            .and_then(|skip| start.naive_local().checked_add_signed(skip))
+            .and_then(|naive| zone.from_local_datetime(&naive).earliest());
+        match later {
+            Some(later) if later <= target => return later,
+            // A change of the UTC offset since the start can put that local time after `target`.
+            Some(later) => steps -= later.signed_duration_since(target).num_seconds() / step + 1,
+            // A local time skipped by a daylight saving change cannot be the start; a few hours
+            // earlier is outside the change.
+            None => steps -= 3 * 3_600 / step + 1,
+        }
+    }
+    start
 }
 
 #[cfg(test)]
@@ -643,6 +769,101 @@ mod tests {
         assert!(found.windows(2).all(|pair| pair[0].start <= pair[1].start));
         assert_eq!(found[0].title.chars().count(), MAX_TEXT_CHARS + 1);
         assert!(found[0].title.ends_with('…'));
+    }
+
+    fn budget() -> Budget {
+        Budget { steps: MAX_TOTAL_STEPS, deadline: Instant::now() + MAX_EXPANSION_TIME }
+    }
+
+    #[test]
+    fn skipping_ahead_keeps_the_occurrences() {
+        // Around the ends of daylight saving in Europe (October 25) and the US (November 1).
+        let window = (utc("2026-10-20T00:00:00Z"), utc("2026-11-05T00:00:00Z"));
+        // The hourly rule would skip ahead to 02:30 on March 29, a time skipped in Berlin.
+        let spring = (utc("2026-03-29T02:00:00Z"), utc("2026-03-31T00:00:00Z"));
+        // A start in summer time puts its local time an hour later in winter.
+        let winter = (utc("2026-11-10T01:00:00Z"), utc("2026-11-20T00:00:00Z"));
+        let cases = [
+            ("DTSTART;TZID=Europe/Berlin:20200101T093000", "FREQ=DAILY", window, true),
+            ("DTSTART;TZID=Europe/Berlin:20190312T180000", "FREQ=DAILY;INTERVAL=3", window, true),
+            ("DTSTART;TZID=America/New_York:20210104T090000", "FREQ=WEEKLY;INTERVAL=2", window, true),
+            ("DTSTART;TZID=America/New_York:20240310T013000", "FREQ=HOURLY;INTERVAL=7", window, true),
+            ("DTSTART;TZID=Europe/Moscow:20250101T000000", "FREQ=MINUTELY;INTERVAL=97", window, true),
+            ("DTSTART:20180101T120000Z", "FREQ=DAILY;UNTIL=20261028T000000Z", window, true),
+            ("DTSTART;TZID=Europe/Berlin:20160101T080000", "FREQ=DAILY;COUNT=4000", window, false),
+            ("DTSTART;TZID=Europe/Berlin:20100104T100000", "FREQ=WEEKLY;BYDAY=MO,WE,FR", window, false),
+            ("DTSTART;VALUE=DATE:20100101", "FREQ=DAILY;INTERVAL=5", window, true),
+            ("DTSTART;TZID=Europe/Berlin:20240101T003000", "FREQ=HOURLY", spring, true),
+            ("DTSTART;TZID=Europe/Berlin:20240101T003000", "FREQ=MINUTELY;INTERVAL=45", spring, true),
+            ("DTSTART;TZID=Europe/Berlin:20240701T103000", "FREQ=HOURLY;INTERVAL=5", winter, true),
+        ];
+        let berlin: Tz = chrono_tz::Europe::Berlin.into();
+        for (start, rule, (from, to), skips) in cases {
+            let text = calendar(&format!(
+                "BEGIN:VEVENT\r\nUID:a\r\n{start}\r\nDURATION:PT30M\r\nRRULE:{rule}\r\n\
+                 EXDATE;TZID=Europe/Berlin:20261027T093000\r\nEND:VEVENT\r\n"
+            ));
+            let mut zones = Zones { local: berlin, by_name: HashMap::new() };
+            let component = &components(&text, &mut zones)[0];
+            let mut fast_budget = budget();
+            let fast = component.starts(from, to, &mut fast_budget);
+            assert_eq!(MAX_TOTAL_STEPS - fast_budget.steps < 600, skips, "{start} {rule}");
+            // Expanded from the first start on, as without skipping ahead.
+            let after = from - TimeDelta::minutes(30);
+            let slow: Vec<_> = component
+                .rule_set(rule, DateTime::<Utc>::MIN_UTC)
+                .unwrap()
+                .after(after.with_timezone(&Tz::UTC))
+                .before(to.with_timezone(&Tz::UTC))
+                .all(u16::MAX)
+                .dates
+                .into_iter()
+                .filter(|start| *start >= after && *start < to)
+                .take(MAX_OCCURRENCES)
+                .collect();
+            assert!(!slow.is_empty(), "{start} {rule}");
+            assert_eq!(fast, slow, "{start} {rule}");
+        }
+    }
+
+    #[test]
+    fn bounds_the_work_of_hostile_rules() {
+        let window = (utc("2026-10-05T00:00:00Z"), utc("2026-11-02T00:00:00Z"));
+        let event = |rule: &str| {
+            format!("BEGIN:VEVENT\r\nUID:{rule}\r\nSUMMARY:{rule}\r\nDTSTART:19000101T000000Z\r\nRRULE:{rule}\r\nEND:VEVENT\r\n")
+        };
+        let read = |events: &str| events_between(&calendar(events), window.0, window.1, Tz::UTC);
+        let started = Instant::now();
+        // Every second since 1900 skips ahead to the window and is cut there.
+        let found = read(&event("FREQ=SECONDLY"));
+        assert_eq!(found.len(), MAX_OCCURRENCES);
+        assert_eq!(found[0].start, window.0.timestamp_millis());
+        // A rule that cannot skip ahead stops after so many occurrences.
+        assert!(read(&event("FREQ=SECONDLY;COUNT=4000000000")).is_empty());
+        // Rules that make finding each occurrence slow are read as single events.
+        for rule in ["FREQ=SECONDLY;BYHOUR=0;BYMINUTE=0;BYSECOND=0", "FREQ=YEARLY;BYHOUR=0,1,2,3,4,5,6,7,8,9,10,11;BYMINUTE=0,1,2,3,4,5,6"] {
+            assert!(read(&event(rule)).is_empty(), "{rule}");
+        }
+        // Many of them use up the feed's budget.
+        let many: String = (0..200).map(|i| event(&format!("FREQ=SECONDLY;COUNT=400000000{i}"))).collect();
+        read(&many);
+        assert!(started.elapsed() < std::time::Duration::from_secs(30), "took {:?}", started.elapsed());
+    }
+
+    #[test]
+    fn leaves_out_recurring_events_once_the_time_is_up() {
+        let text = calendar(
+            "BEGIN:VEVENT\r\nUID:a\r\nSUMMARY:Daily\r\nDTSTART:20261001T090000Z\r\nRRULE:FREQ=DAILY\r\nEND:VEVENT\r\n\
+             BEGIN:VEVENT\r\nUID:b\r\nSUMMARY:Once\r\nDTSTART:20261009T100000Z\r\nEND:VEVENT\r\n",
+        );
+        let mut zones = Zones { local: Tz::UTC, by_name: HashMap::new() };
+        let components = components(&text, &mut zones);
+        let window = (utc("2026-10-08T00:00:00Z"), utc("2026-10-10T00:00:00Z"));
+        assert_eq!(components[0].starts(window.0, window.1, &mut budget()).len(), 2);
+        let mut late = Budget { steps: MAX_TOTAL_STEPS, deadline: Instant::now() };
+        assert!(components[0].starts(window.0, window.1, &mut late).is_empty());
+        assert_eq!(late.steps, 0);
+        assert_eq!(components[1].starts(window.0, window.1, &mut late).len(), 1);
     }
 
     #[test]

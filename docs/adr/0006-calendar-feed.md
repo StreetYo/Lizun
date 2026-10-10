@@ -27,7 +27,10 @@ was retired in favour of the new Outlook, which keeps its data to itself.
   15 minutes by default (5 to 240, a setting); opening the island also refreshes a feed older
   than that, since the thread's timer does not run while the computer sleeps. Recurring events
   are expanded with the `rrule` crate for the weeks around today, and only those events go to
-  the island, through `calendar_snapshot` and the `calendar://changed` event.
+  the island, through `calendar_snapshot` and the `calendar://changed` event. The feed is
+  untrusted input, so reading it is bounded: at most 50,000 events, 2,000 occurrences in the
+  window, and a budget of steps and time for expanding rules. A rule that repeats at a fixed
+  step (every N days, hours...) skips ahead to the window instead of walking from its start.
 - **Time zones** are read by IANA name; Windows names, which Outlook uses, are mapped with the
   ICU that ships with Windows. Floating times and unknown zones count as local time.
 - **Local time is the system time zone at the moment**, read from Windows on every use and
