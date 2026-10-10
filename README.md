@@ -8,6 +8,12 @@ list, and widgets anyone can write and install.
 
 > Status: early prototype. Windows works; macOS is planned (see [ADR 0001](docs/adr/0001-stack.md)).
 
+## Download
+
+Get `Lizun_*_x64-setup.exe` from the [latest release](https://github.com/StreetYo/Lizun/releases/latest)
+and run it (Windows 10/11). The installer is not signed yet, so SmartScreen may warn about it:
+click **More info**, then **Run anyway**.
+
 ## What works today (Windows)
 
 - Mini island with live activities, a capsule as wide as what it shows: cover, title and

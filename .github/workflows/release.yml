@@ -1,0 +1,52 @@
+# Builds the Windows installer and publishes it as a GitHub release when a version tag
+# (v0.1.0, ...) is pushed. The tag should match the version in tauri.conf.json.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: Lizun ${{ github.ref_name }}
+          prerelease: true
+          releaseDraft: false
+          releaseBody: |
+            Early prototype for Windows 10/11.
+
+            **Install:** download `Lizun_*_x64-setup.exe` below and run it. The installer is not
+            signed yet, so Windows SmartScreen may warn about it: click **More info**, then
+            **Run anyway**. Lizun needs the WebView2 runtime, which Windows 11 already has; the
+            installer gets it on Windows 10 if it is missing.
+
+            After installing, the island appears at the top of the screen and Lizun has an icon
+            in the tray. What works so far is listed in the [README](https://github.com/StreetYo/Lizun#what-works-today-windows).
