@@ -354,9 +354,17 @@ impl GitHubLink {
             .filter(|segment| !segment.is_empty())
             .map(|segment| percent_decode_str(segment).decode_utf8_lossy().into_owned())
             .collect();
+        // `.` and `..`, also written as `%2e`, or a slash written as `%2f`, would make the
+        // download URL point elsewhere than the link shows, for example into another repository.
+        if segments.iter().any(|segment| segment == "." || segment == ".." || segment.contains(['/', '\\'])) {
+            return Err(usage());
+        }
         let [owner, repo, rest @ ..] = segments.as_slice() else { return Err(usage()) };
         let repo = repo.strip_suffix(".git").unwrap_or(repo);
-        let name_ok = |name: &str| !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+        // Checked again after cutting `.git`, which turns `..git` into `.`.
+        let name_ok = |name: &str| {
+            !matches!(name, "" | "." | "..") && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        };
         if !name_ok(owner) || !name_ok(repo) {
             return Err(usage());
         }
@@ -589,6 +597,16 @@ mod tests {
             "https://github.com/someone/clock/releases/download/v1/clock.exe",
             "https://github.com/some one/clock",
             "https://github.com.evil.example/someone/clock",
+            "https://github.com/../clock",
+            "https://github.com/someone/..",
+            "https://github.com/someone/..git",
+            "https://github.com/someone/.",
+            "https://github.com/someone/clock/tree/main/../other",
+            "https://github.com/someone/clock/tree/main/%2e%2e/other",
+            "https://github.com/someone/clock/tree/./widget",
+            "https://github.com/someone/clock/tree/main/a%2F..%2Fb",
+            "https://github.com/trusted/clock/releases/download/v1/..%2F..%2F..%2F..%2Fevil%2Frepo%2Fx.zip",
+            "https://github.com/trusted/clock/releases/download/../../../evil/x.zip",
         ] {
             assert!(GitHubLink::parse(bad).is_err(), "{bad} should be rejected");
         }
