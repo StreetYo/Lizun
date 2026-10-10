@@ -11,8 +11,11 @@ mod platform;
 mod preferences;
 mod settings;
 mod system_tray;
+mod widget_apps;
 mod widget_install;
+mod widget_network;
 mod widget_settings;
+mod widget_storage;
 mod widgets;
 mod browser;
 
@@ -34,6 +37,8 @@ pub fn run() {
                 .build(),
         )
         .register_uri_scheme_protocol(widgets::SCHEME, widgets::serve)
+        .manage(widget_storage::Writes::default())
+        .manage(widget_apps::Started::default())
         .invoke_handler(tauri::generate_handler![
             island::island_set_hit_region,
             island::island_keyboard,
@@ -59,6 +64,12 @@ pub fn run() {
             widget_install::widgets_install_confirm,
             widget_install::widgets_install_cancel,
             widget_install::widgets_uninstall,
+            widget_network::widget_network_request,
+            widget_apps::widget_app_start,
+            widget_apps::widget_app_show,
+            widget_storage::widget_storage_get,
+            widget_storage::widget_storage_set,
+            widget_storage::widget_storage_remove,
             widget_settings::widget_settings_built_in,
             widget_settings::widget_settings_all,
             widget_settings::widget_settings_set,
@@ -86,6 +97,11 @@ pub fn run() {
             browser::start(app.handle(), preferences.browser_media, preferences.browser_media_port);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Lizun");
+        .build(tauri::generate_context!())
+        .expect("error while building Lizun")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                widget_apps::close_started(app);
+            }
+        });
 }

@@ -101,6 +101,8 @@ function mockCalendar(): unknown {
   return { configured: true, loading: false, events, error: null, updatedAt: Date.now(), timeZone };
 }
 let mockPending: { id: string } & Record<string, unknown> | null = null;
+/** Widget storage by `<widget id>/<key>`, as JSON text. */
+const mockWidgetData = new Map<string, string>();
 
 function mockSettingsOf(widgetId: string): Record<string, unknown> {
   const widget = mockWidgets.find((w) => w.id === widgetId);
@@ -218,6 +220,16 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
       return [] as T;
     case 'browser_media_status':
       return { enabled: true, port: 6869, listening: true, error: null, browsers: [] } as T;
+    case 'widget_storage_get':
+      return (mockWidgetData.get(`${args?.widgetId}/${args?.key}`) ?? null) as T;
+    case 'widget_storage_set':
+      mockWidgetData.set(`${args?.widgetId}/${args?.key}`, String(args?.value));
+      return undefined as T;
+    case 'widget_storage_remove':
+      mockWidgetData.delete(`${args?.widgetId}/${args?.key}`);
+      return undefined as T;
+    case 'widget_network_request':
+      throw new Error('no network in the browser preview');
     default:
       return undefined as T;
   }

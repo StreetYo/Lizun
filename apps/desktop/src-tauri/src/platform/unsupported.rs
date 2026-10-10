@@ -88,3 +88,19 @@ impl HotkeyListener {
 pub fn spawn_hotkey_listener(_on_press: impl Fn(usize) + Send + 'static) -> Option<HotkeyListener> {
     None
 }
+
+pub fn find_process(_exe: &std::path::Path) -> Option<u32> {
+    None
+}
+
+pub fn start_app(_exe: &std::path::Path, _hide_for: Option<std::time::Duration>) -> std::io::Result<u32> {
+    Err(std::io::Error::other("starting apps is not supported on this platform yet"))
+}
+
+pub fn show_app(_pid: u32) -> bool {
+    false
+}
+
+pub fn close_app_if_hidden(_pid: u32) -> bool {
+    false
+}

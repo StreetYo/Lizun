@@ -522,9 +522,17 @@
       <span class="chip">{permission in PERMISSIONS ? t(PERMISSIONS[permission]) : permission}</span>
     {/each}
     {#each new Set(widget.network) as origin (origin)}
-      <span class="chip">{t('settings.permissions.network', { origin })}</span>
+      <!-- Plain HTTP is only allowed to this computer, where the widget can drive another program. -->
+      {#if origin.startsWith('http://')}
+        <span class="chip strong">{t('settings.permissions.local', { port: origin.split(':').pop() ?? '' })}</span>
+      {:else}
+        <span class="chip">{t('settings.permissions.network', { origin })}</span>
+      {/if}
     {/each}
-    {#if !widget.permissions.length && !widget.network.length}
+    {#each widget.apps ?? [] as app (app.id)}
+      <span class="chip strong">{t('settings.permissions.app', { name: app.name })}</span>
+    {/each}
+    {#if !widget.permissions.length && !widget.network.length && !widget.apps?.length}
       <span class="chip">{t('settings.permissions.none')}</span>
     {/if}
   </div>
@@ -1411,6 +1419,12 @@
     font-size: 11.5px;
     background: var(--card-raised);
     color: var(--text-secondary);
+  }
+
+  /* Access that reaches beyond the widget: other programs on this computer. */
+  .chip.strong {
+    color: var(--text);
+    font-weight: 600;
   }
 
   .badge {
