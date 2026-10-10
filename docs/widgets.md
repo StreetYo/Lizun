@@ -32,8 +32,8 @@ my-widget/
 | `id` | 3–64 lowercase letters, digits, dots or dashes. Unique. |
 | `entry` | HTML file to load (default `index.html`); it must end in `.html` or `.htm`. |
 | `width` | Column width in logical pixels, 120–640 (default 240). |
-| `permissions` | `media:read`, `media:control`, `storage`, `activity`. Anything else is rejected. |
-| `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed). Empty means no network. |
+| `permissions` | `media:read`, `media:control`, `storage`, `activity`, each listed once. Anything else is rejected. |
+| `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed), each listed once. Empty means no network. |
 | `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
 | `locales` | Translations of `name`, `description` and the settings, see [Languages](#languages). |
 

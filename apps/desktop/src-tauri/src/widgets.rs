@@ -7,7 +7,7 @@
 //! permissions declared in the manifest. Network access is limited by a CSP built from the
 //! manifest's `network` list.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::RwLock;
@@ -242,6 +242,13 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
     if let Some(bad) = manifest.network.iter().find(|origin| !is_valid_origin(origin)) {
         return Err(format!("invalid network origin {bad:?}: expected https://host[:port]"));
     }
+    // The settings window lists both with keyed blocks, which fail on a repeated entry.
+    if let Some(twice) = repeated(&manifest.permissions) {
+        return Err(format!("permission {twice:?} is listed twice"));
+    }
+    if let Some(twice) = repeated(&manifest.network) {
+        return Err(format!("network origin {twice:?} is listed twice"));
+    }
     if let Some(setting) = manifest.settings.iter().find(|setting| setting.picks_file()) {
         return Err(format!("setting {:?}: installed widgets cannot ask for files", setting.key()));
     }
@@ -260,6 +267,11 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
             .map_err(|err| format!("locale {code:?}: {err}"))?;
     }
     Ok(())
+}
+
+fn repeated(list: &[String]) -> Option<&String> {
+    let mut seen = HashSet::new();
+    list.iter().find(|item| !seen.insert(item.as_str()))
 }
 
 /// Accepts `https://host[:port]` with an optional leading `*.` wildcard, nothing else, so a
@@ -449,6 +461,17 @@ mod tests {
             network.network = vec![bad.into()];
             assert!(validate(&network).is_err(), "{bad} should be rejected");
         }
+    }
+
+    #[test]
+    fn rejects_repeated_permissions_and_origins() {
+        let mut twice = manifest("dev.lizun.hello");
+        twice.permissions = vec!["storage".into(), "media:read".into(), "storage".into()];
+        assert!(validate(&twice).unwrap_err().contains("listed twice"));
+
+        let mut twice = manifest("dev.lizun.hello");
+        twice.network = vec!["https://api.example.com".into(), "https://api.example.com".into()];
+        assert!(validate(&twice).unwrap_err().contains("listed twice"));
     }
 
     #[test]
