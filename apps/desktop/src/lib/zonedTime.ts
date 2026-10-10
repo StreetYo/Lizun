@@ -29,13 +29,22 @@ export class ZonedTime {
     return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour % 24, minute: parts.minute, second: parts.second };
   }
 
-  /** Midnight that starts the day `addDays` days after the day of `time`. */
+  /** Midnight that starts the day `addDays` days after the day of `time`: the first instant of
+   * that day, 01:00 where daylight saving starts at midnight. */
   midnight(time: number, addDays = 0): number {
     const { year, month, day } = this.fields(time);
     const wall = Date.UTC(year, month - 1, day + addDays);
-    // The offset at a first guess, then again at the result, for days that change daylight saving.
+    const target = new Date(wall);
+    // The offset at a first guess, then again at the result, gives the offsets on both sides of
+    // a daylight saving change. The earlier of the two that falls on the day starts it; where
+    // midnight is skipped, only the one after the change does.
     const first = wall - this.#offset(wall);
-    return wall - this.#offset(first);
+    const candidates = [first, wall - this.#offset(first)].sort((a, b) => a - b);
+    const onDay = (at: number) => {
+      const f = this.fields(at);
+      return f.year === target.getUTCFullYear() && f.month === target.getUTCMonth() + 1 && f.day === target.getUTCDate();
+    };
+    return candidates.find(onDay) ?? candidates[1];
   }
 
   format(time: number, options: Intl.DateTimeFormatOptions, locale?: string): string {
