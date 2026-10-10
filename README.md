@@ -31,6 +31,7 @@ list, and widgets anyone can write and install.
 - Third-party widgets in a sandbox, with a permission manifest and their own settings (see
   [docs/widgets.md](docs/widgets.md)). Install them in Settings from a GitHub link, a zip
   archive or a folder: Lizun checks the widget and shows its permissions before installing it.
+  Widgets ready to install are listed in the [widget catalog](docs/widget-catalog.md).
 - Widgets can be dragged into another order or a second row and hidden, right in the island
   (pencil button) or in Settings > Widgets.
 - Settings window (gear in the island or the tray menu): language, launch at login, how the closed
@@ -86,4 +87,13 @@ Texts left out of a translation are shown in English. How it works: [ADR 0007](d
 
 ## License
 
-Not chosen yet.
+Lizun is free software, licensed under either of
+
+- [MIT License](LICENSE-MIT)
+- [Apache License, Version 2.0](LICENSE-APACHE)
+
+at your option. You may use, copy, change, share and sell it, in open or closed projects.
+
+Unless you explicitly state otherwise, any contribution you submit for inclusion in Lizun, as
+defined in the Apache-2.0 license, is licensed as above, without any additional terms or
+conditions.

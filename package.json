@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Open-source dynamic island with installable widgets",
+  "license": "MIT OR Apache-2.0",
   "scripts": {
     "dev": "pnpm --filter @lizun/desktop tauri dev",
     "build": "pnpm --filter @lizun/desktop tauri build",

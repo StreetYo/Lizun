@@ -3,6 +3,7 @@ name = "lizun"
 version = "0.1.0"
 description = "Lizun: open-source dynamic island with installable widgets"
 authors = ["Lizun contributors"]
+license = "MIT OR Apache-2.0"
 edition = "2024"
 rust-version = "1.90"
 
