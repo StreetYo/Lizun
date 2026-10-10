@@ -106,7 +106,8 @@
         {:else if entry.kind === 'files'}
           {@const tiles = fileTiles(entry)}
           <span class="files" class:single={entry.count === 1}>
-            {#each tiles.files as file (file.path)}
+            <!-- By place: the app that copied the files may list one twice. -->
+            {#each tiles.files as file, index (index)}
               {@render fileTile(file, entry.count === 1)}
             {/each}
             {#if tiles.more}<span class="tile more">+{tiles.more}</span>{/if}

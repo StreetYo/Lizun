@@ -83,7 +83,9 @@ class MediaStore {
     const artwork = key ? await invoke<string | null>('media_artwork', { key }) : null;
     if (this.#artworkKey !== key) return; // superseded by a newer cover
     this.artwork = artwork;
-    this.tint = artwork ? await dominantColor(artwork) : 'rgb(255, 255, 255)';
+    const tint = artwork ? await dominantColor(artwork) : 'rgb(255, 255, 255)';
+    if (this.#artworkKey !== key) return; // a newer cover came while this one was decoded
+    this.tint = tint;
     this.#notify();
   }
 

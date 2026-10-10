@@ -41,7 +41,7 @@ class FileTray {
   }
 
   async add(paths: string[]): Promise<void> {
-    const fresh = paths.filter((path) => !this.files.some((file) => file.path === path));
+    const fresh = [...new Set(paths)].filter((path) => !this.files.some((file) => file.path === path));
     if (!fresh.length) return;
     await invoke('file_tray_allow', { paths: fresh });
     this.files = [...this.files, ...fresh.map(describeFile)];

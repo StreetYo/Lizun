@@ -184,9 +184,6 @@ fn virtual_key(code: &str) -> Option<u32> {
     if let Some(digit) = number("Digit").filter(|d| *d <= 9) {
         return Some(0x30 + digit);
     }
-    if let Some(digit) = number("Numpad").filter(|d| *d <= 9) {
-        return Some(0x60 + digit);
-    }
     if let Some(n) = number("F").filter(|n| (1..=24).contains(n)) {
         return Some(0x70 + n - 1);
     }
@@ -204,7 +201,6 @@ fn virtual_key(code: &str) -> Option<u32> {
         "NumpadMultiply" => 0x6A,
         "NumpadAdd" => 0x6B,
         "NumpadSubtract" => 0x6D,
-        "NumpadDecimal" => 0x6E,
         "NumpadDivide" => 0x6F,
         "Semicolon" => 0xBA,
         "Equal" => 0xBB,

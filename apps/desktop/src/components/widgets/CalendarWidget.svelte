@@ -82,6 +82,17 @@
     return hideEnded ? ahead : [...ahead, ...onDay.filter(ended).sort((a, b) => b.end - a.end)];
   });
   const shown = $derived(listed.length > MAX_ROWS ? listed.slice(0, MAX_ROWS - 1) : listed);
+  // Feeds can list the same event more than once (free/busy feeds call every slot "Busy"), so a
+  // repeat gets a count in its key: keys must differ or the list fails to render.
+  const rows = $derived.by(() => {
+    const seen = new Map<string, number>();
+    return shown.map((event) => {
+      const base = `${event.start}-${event.end}-${event.title}`;
+      const repeat = seen.get(base) ?? 0;
+      seen.set(base, repeat + 1);
+      return { event, key: repeat ? `${base}-${repeat}` : base };
+    });
+  });
   const firstLoad = $derived(calendar.snapshot.updatedAt === null);
 
   function timeLabel(event: CalendarEvent): string {
@@ -89,10 +100,6 @@
     const time = (at: number) => zone.format(at, { hour: 'numeric', minute: '2-digit' }, i18n.language);
     if (event.start < selected.start) return `–${time(event.end)}`;
     return time(event.start);
-  }
-
-  function eventKey(event: CalendarEvent): string {
-    return `${event.start}-${event.title}`;
   }
 
   /** `2 d 3 h`, `1 h 5 min`, `12 min`; rounded up for what is ahead, so it never says 0. Null
@@ -188,8 +195,7 @@
     </div>
   {:else if listed.length}
     <ul class="events">
-      {#each shown as event (eventKey(event))}
-        {@const key = eventKey(event)}
+      {#each rows as { event, key } (key)}
         <li
           class="event"
           class:all-day={event.allDay}

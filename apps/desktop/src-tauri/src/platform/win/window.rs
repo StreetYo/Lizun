@@ -7,7 +7,7 @@ use windows::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, DeleteObject, RGN
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetForegroundWindow, GetWindowLongPtrW, HWND_TOPMOST, IsWindow, MA_NOACTIVATE,
-    SetForegroundWindow, WA_INACTIVE, WM_ACTIVATE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED,
+    SetForegroundWindow, WA_INACTIVE, WM_ACTIVATE, WM_DISPLAYCHANGE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowLongPtrW, SetWindowPos, ShowWindow, WM_MOUSEACTIVATE,
     WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
@@ -135,10 +135,15 @@ unsafe extern "system" fn island_window_proc(
     if msg == WM_MOUSEACTIVATE {
         return LRESULT(MA_NOACTIVATE as isize);
     }
-    if msg == WM_ACTIVATE && (wparam.0 & 0xffff) as u32 == WA_INACTIVE {
-        if let Some(callback) = ON_DEACTIVATED.get() {
-            callback();
-        }
+    if msg == WM_ACTIVATE
+        && (wparam.0 & 0xffff) as u32 == WA_INACTIVE
+        && let Some(callback) = ON_DEACTIVATED.get()
+    {
+        callback();
+    }
+    // A monitor was added or removed, or changed its resolution or which one is primary.
+    if msg == WM_DISPLAYCHANGE {
+        crate::island::displays_changed();
     }
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }

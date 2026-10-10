@@ -23,6 +23,8 @@ export class Reorder {
   #spans: Span[] = [];
   #origin = 0;
   #pointerId = -1;
+  /** The element that holds the pointer during a drag. */
+  #holder: Element | null = null;
   readonly #axis: 'x' | 'y';
   readonly #gap: number;
   readonly #onDrop: (from: number, to: number) => void;
@@ -36,13 +38,15 @@ export class Reorder {
 
   /** Starts a drag from a pointerdown; `items` are all items in their current order. */
   start(event: PointerEvent, index: number, items: HTMLElement[]): void {
-    if (event.button !== 0 || this.dragging !== null) return;
+    // A drag whose element went away with the pointer never got its pointerup; it is over.
+    if (event.button !== 0 || (this.dragging !== null && this.#holder?.hasPointerCapture(this.#pointerId))) return;
     event.preventDefault();
     this.#spans = items.map((item) => {
       const rect = item.getBoundingClientRect();
       return this.#axis === 'x' ? { start: rect.left, size: rect.width } : { start: rect.top, size: rect.height };
     });
-    (event.currentTarget as Element).setPointerCapture(event.pointerId);
+    this.#holder = event.currentTarget as Element;
+    this.#holder.setPointerCapture(event.pointerId);
     this.#pointerId = event.pointerId;
     this.#origin = this.#position(event);
     this.#delta = 0;
@@ -71,12 +75,14 @@ export class Reorder {
     this.target = from + passedAfter - passedBefore;
   }
 
-  /** Ends the drag on pointerup (drops) or pointercancel (puts the item back). */
+  /** Ends the drag on pointerup (drops), or on pointercancel or lostpointercapture (puts the
+   * item back). */
   end(event: PointerEvent): void {
     if (this.dragging === null || event.pointerId !== this.#pointerId) return;
     const from = this.dragging;
     const to = this.target;
     this.dragging = null;
+    this.#holder = null;
     if (event.type !== 'pointerup' || from === to) return;
 
     const spans = this.#spans;
