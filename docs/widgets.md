@@ -30,12 +30,20 @@ my-widget/
 | Field | Meaning |
 |---|---|
 | `id` | 3–64 lowercase letters, digits, dots or dashes. Unique. |
+| `name` | Up to 50 characters. |
+| `version` | Up to 32 letters, digits, dots, dashes, pluses or `_`, such as `1.2.0`. |
+| `author`, `description` | Optional, up to 60 and 200 characters. |
 | `entry` | HTML file to load (default `index.html`); it must end in `.html` or `.htm`. |
 | `width` | Column width in logical pixels, 120–640 (default 240). |
 | `permissions` | `media:read`, `media:control`, `storage`, `activity`, each listed once. Anything else is rejected. |
 | `network` | Origins the widget may `fetch` (`https://host[:port]`), each listed once. `https://*.example.com` covers the subdomains; a wildcard needs at least two labels after it, so `*.com` is rejected. Empty means no network. |
 | `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
 | `locales` | Translations of `name`, `description` and the settings, see [Languages](#languages). |
+
+Texts the user sees (`name`, `author`, `description`, the settings' labels and so on, and their
+translations) may not contain control characters, line separators or the invisible characters
+that change the direction of text (U+200E, U+200F, U+061C, U+2028–U+202E, U+2066–U+2069), so a
+widget cannot make its name look like something else.
 
 ## The SDK
 

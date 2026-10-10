@@ -286,13 +286,25 @@ pub fn validate_texts(settings: &[SettingSpec], texts: &BTreeMap<String, Setting
     Ok(())
 }
 
-fn check_length(what: &str, text: &str, allowed: RangeInclusive<usize>) -> Result<(), String> {
+/// Checks the length of a text shown in the settings window, and that it has no control
+/// characters or characters that change the text direction, which could make it look like
+/// something else, such as another widget's name followed by "(built in)".
+pub(crate) fn check_length(what: &str, text: &str, allowed: RangeInclusive<usize>) -> Result<(), String> {
     let length = text.chars().count();
-    if allowed.contains(&length) {
-        Ok(())
-    } else {
-        Err(format!("{what} must be {} to {} characters long", allowed.start(), allowed.end()))
+    if !allowed.contains(&length) {
+        return Err(format!("{what} must be {} to {} characters long", allowed.start(), allowed.end()));
     }
+    if let Some(bad) = text.chars().find(|&c| is_hidden_control(c)) {
+        return Err(format!("{what} contains the control character U+{:04X}", u32::from(bad)));
+    }
+    Ok(())
+}
+
+/// Control characters, line and paragraph separators, and the bidirectional marks, embeddings,
+/// overrides and isolates.
+fn is_hidden_control(c: char) -> bool {
+    c.is_control()
+        || matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
 /// Every declared key with a valid value: the stored one, fixed up, or the default. Stored keys

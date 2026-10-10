@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{AppHandle, Emitter, Manager, Runtime, UriSchemeContext};
 
+use crate::widget_settings::check_length;
+
 pub const SCHEME: &str = "lizun-widget";
 /// Sent to every window after the widget list was reloaded.
 pub const EVENT_CHANGED: &str = "widgets://changed";
@@ -26,6 +28,11 @@ pub(crate) const MANIFEST_FILE: &str = "manifest.json";
 
 /// More translations than this in one manifest are refused.
 const MAX_LOCALES: usize = 64;
+/// Longest texts a manifest may have, in characters.
+const MAX_NAME: usize = 50;
+const MAX_AUTHOR: usize = 60;
+const MAX_DESCRIPTION: usize = 200;
+const MAX_VERSION: usize = 32;
 
 /// Permissions a widget can request. The island refuses SDK calls that need anything else.
 pub const KNOWN_PERMISSIONS: &[&str] = &["media:read", "media:control", "storage", "activity"];
@@ -233,6 +240,16 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
     if safe_relative_path(&manifest.entry).is_none() || !is_html(Path::new(&manifest.entry)) {
         return Err(format!("invalid entry {:?}: use the path of an .html file in the widget folder", manifest.entry));
     }
+    check_length("name", &manifest.name, 1..=MAX_NAME)?;
+    check_length("author", &manifest.author, 0..=MAX_AUTHOR)?;
+    check_length("description", &manifest.description, 0..=MAX_DESCRIPTION)?;
+    let version_ok = manifest.version.chars().all(|c| c.is_ascii_alphanumeric() || ".+-_".contains(c));
+    if !(1..=MAX_VERSION).contains(&manifest.version.len()) || !version_ok {
+        return Err(format!(
+            "invalid version {:?}: use up to {MAX_VERSION} letters, digits, dots, dashes or pluses, such as 1.2.0",
+            manifest.version
+        ));
+    }
     if !(120..=640).contains(&manifest.width) {
         return Err(format!("width {} is outside 120..=640", manifest.width));
     }
@@ -263,8 +280,16 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
         if !code_ok {
             return Err(format!("invalid locale {code:?}: use a language code such as ru or pt-BR"));
         }
-        crate::widget_settings::validate_texts(&manifest.settings, &texts.settings)
-            .map_err(|err| format!("locale {code:?}: {err}"))?;
+        let checked = (|| {
+            if let Some(name) = &texts.name {
+                check_length("name", name, 1..=MAX_NAME)?;
+            }
+            if let Some(description) = &texts.description {
+                check_length("description", description, 0..=MAX_DESCRIPTION)?;
+            }
+            crate::widget_settings::validate_texts(&manifest.settings, &texts.settings)
+        })();
+        checked.map_err(|err| format!("locale {code:?}: {err}"))?;
     }
     Ok(())
 }
@@ -494,6 +519,44 @@ mod tests {
         let mut twice = manifest("dev.lizun.hello");
         twice.network = vec!["https://api.example.com".into(), "https://api.example.com".into()];
         assert!(validate(&twice).unwrap_err().contains("listed twice"));
+    }
+
+    #[test]
+    fn limits_the_texts_shown_to_the_user() {
+        let check = |edit: &dyn Fn(&mut WidgetManifest)| {
+            let mut widget = manifest("dev.lizun.hello");
+            edit(&mut widget);
+            validate(&widget)
+        };
+        assert!(check(&|w| w.name = "Погода ☀️".into()).is_ok());
+        assert!(check(&|w| w.version = "1.2.0-beta.1+build_7".into()).is_ok());
+        assert!(check(&|w| w.description = "x".repeat(MAX_DESCRIPTION)).is_ok());
+
+        let bad: [&dyn Fn(&mut WidgetManifest); 12] = [
+            &|w| w.name = String::new(),
+            &|w| w.name = "x".repeat(MAX_NAME + 1),
+            &|w| w.name = "Calendar\u{202E}nI-tliuB".into(),
+            &|w| w.name = "Calendar \u{2066}(built in)\u{2069}".into(),
+            &|w| w.name = "Calendar\u{200F}".into(),
+            &|w| w.name = "Two\nlines".into(),
+            &|w| w.author = "Lizun\u{0}".into(),
+            &|w| w.author = "x".repeat(MAX_AUTHOR + 1),
+            &|w| w.description = "x".repeat(MAX_DESCRIPTION + 1),
+            &|w| w.version = String::new(),
+            &|w| w.version = "1.0 (official)".into(),
+            &|w| w.version = "1".repeat(MAX_VERSION + 1),
+        ];
+        for (index, edit) in bad.iter().enumerate() {
+            assert!(check(*edit).is_err(), "case {index} should be rejected");
+        }
+
+        let locale = |texts: serde_json::Value| {
+            check(&|w| w.locales = serde_json::from_value(serde_json::json!({ "ru": texts })).unwrap())
+        };
+        assert!(locale(serde_json::json!({ "name": "Привет", "description": "Пример" })).is_ok());
+        assert!(locale(serde_json::json!({ "name": "" })).is_err());
+        assert!(locale(serde_json::json!({ "name": "Привет\u{202D}" })).is_err());
+        assert!(locale(serde_json::json!({ "description": "x".repeat(MAX_DESCRIPTION + 1) })).is_err());
     }
 
     #[test]
