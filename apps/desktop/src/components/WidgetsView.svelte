@@ -115,8 +115,21 @@
     };
   }
 
+  /** Near the edge of a row that scrolls, a dragged widget scrolls it, so it can go anywhere. */
+  const EDGE_SCROLL_ZONE = 48;
+  const EDGE_SCROLL_STEP = 14;
+
+  function scrollAtEdge(event: PointerEvent): void {
+    const row = view?.parentElement;
+    if (!row || row.scrollWidth <= row.clientWidth) return;
+    const box = row.getBoundingClientRect();
+    if (event.clientX < box.left + EDGE_SCROLL_ZONE) row.scrollLeft -= EDGE_SCROLL_STEP;
+    else if (event.clientX > box.right - EDGE_SCROLL_ZONE) row.scrollLeft += EDGE_SCROLL_STEP;
+  }
+
   function move(event: PointerEvent): void {
     if (!drag || event.pointerId !== drag.pointerId || !view) return;
+    scrollAtEdge(event);
     // The view grows and moves while a widget goes into another row, so the pointer is read
     // against where the view is now.
     const origin = view.getBoundingClientRect();
@@ -360,8 +373,11 @@
     font-weight: 500;
   }
 
-  /* Takes the width of the widgets instead of widening the island. */
+  /* Takes the width of the widgets instead of widening the island, and stays in view while the
+     row scrolls. */
   .hidden {
+    position: sticky;
+    left: 0;
     display: flex;
     flex-wrap: wrap;
     align-items: center;

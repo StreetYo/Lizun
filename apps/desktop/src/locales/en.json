@@ -10,6 +10,8 @@
     "widgets": "Widgets",
     "tray": "Tray",
     "editWidgets": "Edit widgets",
+    "scrollLeft": "Earlier widgets",
+    "scrollRight": "More widgets",
     "done": "Done",
     "settings": "Settings",
     "removeFromTray": "Remove from tray",

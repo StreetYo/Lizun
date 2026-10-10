@@ -1,4 +1,6 @@
 <script lang="ts">
+  import CaretLeft from 'phosphor-svelte/lib/CaretLeft';
+  import CaretRight from 'phosphor-svelte/lib/CaretRight';
   import ClipboardText from 'phosphor-svelte/lib/ClipboardText';
   import GearSix from 'phosphor-svelte/lib/GearSix';
   import PencilSimple from 'phosphor-svelte/lib/PencilSimple';
@@ -20,6 +22,52 @@
   // out from under the cursor.
   let widgetsWidth = $state(0);
   let editing = $state(false);
+
+  /** The island stays this far from the sides of the screen; widgets that do not fit scroll. */
+  const SCREEN_MARGIN = 48;
+  /** The panel's own padding left and right, see `.panel`. */
+  const PANEL_PADDING = 28;
+  /** Room around the widgets inside the scrolling row for the edit mode's buttons, which stick
+   * out of the widgets; the row would cut them off. */
+  const ROW_BLEED = 8;
+
+  let screenWidth = $state(window.innerWidth);
+  const maxWidth = $derived(Math.max(320, screenWidth - 2 * SCREEN_MARGIN - PANEL_PADDING));
+  let scroller = $state<HTMLElement>();
+  let moreLeft = $state(false);
+  let moreRight = $state(false);
+
+  /** Which sides have widgets out of sight, and the width the other tabs take. */
+  function measure(): void {
+    if (!scroller) return;
+    const { scrollLeft, clientWidth, scrollWidth } = scroller;
+    moreLeft = scrollLeft > 1;
+    moreRight = scrollLeft + clientWidth < scrollWidth - 1;
+    widgetsWidth = clientWidth - 2 * ROW_BLEED;
+  }
+
+  $effect(() => {
+    const row = scroller;
+    if (!row) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    for (const child of row.children) observer.observe(child);
+    measure();
+    return () => observer.disconnect();
+  });
+
+  /** The wheel scrolls the row sideways. Over a widget the wheel goes to the widget's own page,
+   * so this only works between and around widgets; the arrows work everywhere. */
+  function wheel(event: WheelEvent): void {
+    if (!scroller || !(moreLeft || moreRight) || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    scroller.scrollLeft += event.deltaY;
+  }
+
+  /** Scrolls by most of the visible width, keeping a widget's worth in view for orientation. */
+  function page(direction: -1 | 1): void {
+    if (!scroller) return;
+    scroller.scrollBy({ left: direction * Math.max(160, scroller.clientWidth - 160), behavior: 'smooth' });
+  }
 
   /** Clearing the clipboard history takes a second click: the first turns the trash button into
    * a red "Clear all?" button, which goes back after a few seconds or when the cursor leaves. */
@@ -106,7 +154,28 @@
     {/if}
   </header>
   {#if tab === 'widgets'}
-    <div bind:clientWidth={widgetsWidth}><WidgetsView {editing} /></div>
+    <div class="widgets" class:more-left={moreLeft} class:more-right={moreRight}>
+      <div
+        class="row"
+        bind:this={scroller}
+        style:max-width="{maxWidth + 2 * ROW_BLEED}px"
+        style:--bleed="{ROW_BLEED}px"
+        onscroll={measure}
+        onwheel={wheel}
+      >
+        <WidgetsView {editing} />
+      </div>
+      {#if moreLeft}
+        <button class="page left" title={t('island.scrollLeft')} onclick={() => page(-1)}>
+          <CaretLeft size={14} weight="bold" />
+        </button>
+      {/if}
+      {#if moreRight}
+        <button class="page right" title={t('island.scrollRight')} onclick={() => page(1)}>
+          <CaretRight size={14} weight="bold" />
+        </button>
+      {/if}
+    </div>
   {:else if tab === 'clipboard'}
     <ClipboardView width={widgetsWidth} />
   {:else}
@@ -114,9 +183,73 @@
   {/if}
 </div>
 
+<svelte:window bind:innerWidth={screenWidth} />
+
 <style>
   .panel {
     padding: 6px 14px 16px;
+  }
+
+  .widgets {
+    position: relative;
+    --fade-left: 0px;
+    --fade-right: 0px;
+  }
+
+  .widgets.more-left {
+    --fade-left: 48px;
+  }
+
+  .widgets.more-right {
+    --fade-right: 48px;
+  }
+
+  .row {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    padding: var(--bleed);
+    margin: calc(-1 * var(--bleed));
+    /* Widgets out of sight fade out at the edge they are behind. */
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 var(--fade-left),
+      #000 calc(100% - var(--fade-right)),
+      transparent 100%
+    );
+  }
+
+  .page {
+    position: absolute;
+    top: 50%;
+    z-index: 4;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    margin-top: -13px;
+    border-radius: 13px;
+    background: var(--card-raised);
+    color: var(--text);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+    opacity: 0.85;
+    transition:
+      opacity 150ms ease,
+      background 150ms ease;
+  }
+
+  .page:hover {
+    opacity: 1;
+    background: #3a3940;
+  }
+
+  .page.left {
+    left: -8px;
+  }
+
+  .page.right {
+    right: -8px;
   }
 
   header {
