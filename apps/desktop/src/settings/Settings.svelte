@@ -516,11 +516,12 @@
 {/snippet}
 
 {#snippet permissionChips(widget: WidgetManifest)}
+  <!-- A manifest may list a permission or origin twice; each is shown once. -->
   <div class="chips">
-    {#each widget.permissions as permission (permission)}
+    {#each new Set(widget.permissions) as permission (permission)}
       <span class="chip">{permission in PERMISSIONS ? t(PERMISSIONS[permission]) : permission}</span>
     {/each}
-    {#each widget.network as origin (origin)}
+    {#each new Set(widget.network) as origin (origin)}
       <span class="chip">{t('settings.permissions.network', { origin })}</span>
     {/each}
     {#if !widget.permissions.length && !widget.network.length}
