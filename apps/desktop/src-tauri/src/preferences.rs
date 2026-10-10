@@ -2,14 +2,18 @@
 //! windows, so the island reacts to the settings window immediately.
 
 use std::fs;
-use std::path::PathBuf;
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const EVENT_CHANGED: &str = "preferences://changed";
 const FILE_NAME: &str = "preferences.json";
+/// Most items of a list in the file tried one by one when the list as a whole cannot be read.
+const MAX_LIST_ITEMS: usize = 4 * MAX_WIDGET_SLOTS;
 
 /// How the island looks while it is collapsed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,7 +59,8 @@ pub struct WidgetSlot {
 }
 
 /// Unknown fields are ignored and missing ones take their defaults, so files written by other
-/// versions still load.
+/// versions still load. A file is read value by value (see [`parse`]), so a value this version
+/// cannot read takes its default without losing the others.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
@@ -142,16 +147,112 @@ impl Preferences {
 pub struct Store(Mutex<Preferences>);
 
 pub fn init(app: &AppHandle) {
-    let preferences = file_path(app)
-        .and_then(|path| fs::read_to_string(path).ok())
-        .map(|text| {
-            serde_json::from_str::<Preferences>(&text).map(Preferences::clamped).unwrap_or_else(|err| {
-                log::warn!("ignoring unreadable {FILE_NAME}: {err}");
-                Preferences::default()
-            })
-        })
-        .unwrap_or_default();
+    let preferences = file_path(app).map(|path| load(&path)).unwrap_or_default();
     app.manage(Store(Mutex::new(preferences)));
+}
+
+/// Reads the preferences file. When some of it cannot be read, the file is first copied to
+/// `preferences.json.bak`, since the next save leaves out what could not be read.
+fn load(path: &Path) -> Preferences {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            if err.kind() != ErrorKind::NotFound {
+                log::warn!("cannot read {FILE_NAME}: {err}");
+            }
+            return Preferences::default();
+        }
+    };
+    let (preferences, unreadable) = parse(&String::from_utf8_lossy(&bytes));
+    if !unreadable.is_empty() {
+        log::warn!("{FILE_NAME}: {} could not be read and took the default", unreadable.join(", "));
+        if let Err(err) = fs::write(path.with_extension("json.bak"), &bytes) {
+            log::warn!("could not keep a copy of {FILE_NAME}: {err}");
+        }
+    }
+    preferences
+}
+
+/// The preferences in `text` and the names of the values that could not be read. Each value is
+/// taken from the file only if the preferences can still be read with it, so a value this
+/// version does not know, such as a new choice, or a number out of range for its type, takes
+/// its default and the rest of the file is kept. Objects are read value by value and lists
+/// item by item.
+fn parse(text: &str) -> (Preferences, Vec<String>) {
+    let Ok(mut merged) = serde_json::to_value(Preferences::default()) else {
+        return (Preferences::default(), Vec::new());
+    };
+    let file = match serde_json::from_str::<Value>(text) {
+        Ok(file) if file.is_object() => file,
+        Ok(_) => return (Preferences::default(), vec!["the whole file".into()]),
+        Err(err) => return (Preferences::default(), vec![format!("the whole file ({err})")]),
+    };
+    let mut unreadable = Vec::new();
+    merge(&mut merged, "", &file, &mut unreadable);
+    let preferences = Preferences::deserialize(&merged).map(Preferences::clamped).unwrap_or_default();
+    (preferences, unreadable)
+}
+
+/// Copies the values of the object `file` into `merged` at the JSON pointer `at`.
+fn merge(merged: &mut Value, at: &str, file: &Value, unreadable: &mut Vec<String>) {
+    let readable = |value: &Value| Preferences::deserialize(value).is_ok();
+    let Value::Object(fields) = file else { return };
+    for (key, value) in fields {
+        let pointer = format!("{at}/{}", key.replace('~', "~0").replace('/', "~1"));
+        // Fields this version does not know are left out, as before.
+        let Some(current) = merged.pointer(&pointer) else { continue };
+        if current.is_object() && value.is_object() {
+            merge(merged, &pointer, value, unreadable);
+            continue;
+        }
+        let with = |merged: &Value, value: Value| {
+            let mut trial = merged.clone();
+            if let Some(slot) = trial.pointer_mut(&pointer) {
+                *slot = value;
+            }
+            trial
+        };
+        let trial = with(merged, value.clone());
+        if readable(&trial) {
+            *merged = trial;
+            continue;
+        }
+        let name = pointer.trim_start_matches('/').replace('/', ".");
+        let Value::Array(items) = value else {
+            unreadable.push(name);
+            continue;
+        };
+        let mut kept = with(merged, Value::Array(Vec::new()));
+        if !readable(&kept) {
+            unreadable.push(name);
+            continue;
+        }
+        for item in items.iter().take(MAX_LIST_ITEMS) {
+            let mut trial = kept.clone();
+            if let Some(Value::Array(list)) = trial.pointer_mut(&pointer) {
+                list.push(item.clone());
+            }
+            if readable(&trial) {
+                kept = trial;
+            }
+        }
+        *merged = kept;
+        unreadable.push(format!("some of {name}"));
+    }
+}
+
+/// Writes the file next to the old one and swaps it in, so a crash never leaves half a file.
+fn save(path: &Path, preferences: &Preferences) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(preferences).map_err(|e| e.to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    let written = fs::File::create(&temporary).and_then(|mut file| {
+        file.write_all(json.as_bytes())?;
+        file.sync_all()
+    });
+    written.and_then(|()| fs::rename(&temporary, path)).map_err(|e| e.to_string())
 }
 
 pub fn current(app: &AppHandle) -> Preferences {
@@ -175,11 +276,7 @@ pub fn preferences_set(
 ) -> Result<Preferences, String> {
     let preferences = preferences.clamped();
     let path = file_path(&app).ok_or("no config folder")?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    let json = serde_json::to_string_pretty(&preferences).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())?;
+    save(&path, &preferences)?;
     *store.0.lock().unwrap() = preferences.clone();
     crate::browser::configure(&app, preferences.browser_media, preferences.browser_media_port);
     crate::i18n::apply(&app, &preferences.language);
@@ -232,6 +329,65 @@ mod tests {
             serde_json::to_string(&hidden).unwrap(),
             r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null}}"#
         );
+    }
+
+    #[test]
+    fn keeps_what_it_can_read_of_a_file() {
+        let text = r#"{
+            "islandVisibility": "pinned",
+            "autoHideDelayMs": 5000000000,
+            "openDelayMs": 300,
+            "language": "ru",
+            "browserMediaPort": "six",
+            "clipboardLimit": 120,
+            "widgets": [{"id": "todo", "enabled": false, "row": 1}, {"id": 5}, {"id": "notes", "enabled": true}],
+            "hotkeys": {"toggleIsland": "Ctrl+Alt+F13", "playPause": 7},
+            "somethingNew": {"x": 1}
+        }"#;
+        let (preferences, mut unreadable) = parse(text);
+        unreadable.sort();
+        assert_eq!(preferences.island_visibility, IslandVisibility::Always);
+        assert_eq!(preferences.auto_hide_delay_ms, 1000);
+        assert_eq!(preferences.browser_media_port, crate::browser::DEFAULT_PORT);
+        assert_eq!((preferences.open_delay_ms, preferences.language.as_str(), preferences.clipboard_limit), (300, "ru", 120));
+        let slot = |id: &str, enabled, row| WidgetSlot { id: id.into(), enabled, row };
+        assert_eq!(preferences.widgets, vec![slot("todo", false, 1), slot("notes", true, 0)]);
+        assert_eq!(preferences.hotkeys.toggle_island.as_deref(), Some("Ctrl+Alt+F13"));
+        assert_eq!(preferences.hotkeys.play_pause, None);
+        assert_eq!(
+            unreadable,
+            ["autoHideDelayMs", "browserMediaPort", "hotkeys.playPause", "islandVisibility", "some of widgets"]
+        );
+
+        let (fine, unreadable) = parse(&serde_json::to_string(&preferences).unwrap());
+        assert_eq!((fine, unreadable.len()), (preferences, 0));
+        for broken in ["", "{\"language\": \"ru\"", "[1, 2]", "null"] {
+            let (preferences, unreadable) = parse(broken);
+            assert_eq!(preferences, Preferences::default());
+            assert_eq!(unreadable.len(), 1, "{broken}");
+        }
+    }
+
+    #[test]
+    fn saves_whole_files_and_keeps_unreadable_ones() {
+        let dir = std::env::temp_dir().join(format!("lizun-preferences-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join(FILE_NAME);
+        let backup = dir.join("preferences.json.bak");
+        assert_eq!(load(&path), Preferences::default());
+
+        let russian = Preferences { language: "ru".into(), clipboard_limit: 75, ..Preferences::default() };
+        save(&path, &russian).unwrap();
+        assert_eq!(load(&path), russian);
+        assert!(!dir.join("preferences.json.tmp").exists() && !backup.exists());
+        save(&path, &Preferences::default()).unwrap();
+        assert_eq!(load(&path), Preferences::default());
+
+        let newer = r#"{"language":"ru","islandVisibility":"pinned"}"#;
+        fs::write(&path, newer).unwrap();
+        assert_eq!(load(&path).language, "ru");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), newer);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
