@@ -148,8 +148,12 @@ async function handleMessage(event: MessageEvent): Promise<void> {
 
 let listening = false;
 
-/** Connects a widget iframe to the SDK bridge; returns a function that disconnects it. */
-export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest): () => void {
+/**
+ * Connects a widget iframe to the SDK bridge; returns a function that disconnects it.
+ * `navigated` is called when the widget's page navigated the frame away, after the frame was
+ * disconnected; the caller starts the widget over in a new iframe.
+ */
+export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest, navigated: () => void): () => void {
   if (!listening) {
     listening = true;
     window.addEventListener('message', (event) => void handleMessage(event));
@@ -177,5 +181,20 @@ export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest):
   const source = iframe.contentWindow;
   if (!source) return () => {};
   frames.set(source, { widget, iframe, mediaSubscribed: false });
-  return () => frames.delete(source);
+  // The first load is the widget's entry page; any later one means a page in the frame
+  // navigated it, perhaps to a file that is not the widget's page. The frame's origin is
+  // opaque, so where it went cannot be checked, and the window stays the same object, so the
+  // frame would keep the widget's permissions: it is disconnected instead. (The island's CSP
+  // already keeps frames from loading anything but widget files.)
+  let loads = 0;
+  const loaded = () => {
+    if (++loads === 1) return;
+    frames.delete(source);
+    navigated();
+  };
+  iframe.addEventListener('load', loaded);
+  return () => {
+    iframe.removeEventListener('load', loaded);
+    frames.delete(source);
+  };
 }

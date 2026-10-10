@@ -230,8 +230,8 @@ fn validate(manifest: &WidgetManifest) -> Result<(), String> {
     if !(3..=64).contains(&id.len()) || !id_chars_ok || !id.starts_with(|c: char| c.is_ascii_alphanumeric()) {
         return Err(format!("invalid id {id:?}: use 3-64 lowercase letters, digits, dots or dashes"));
     }
-    if safe_relative_path(&manifest.entry).is_none() {
-        return Err(format!("invalid entry {:?}", manifest.entry));
+    if safe_relative_path(&manifest.entry).is_none() || !is_html(Path::new(&manifest.entry)) {
+        return Err(format!("invalid entry {:?}: use the path of an .html file in the widget folder", manifest.entry));
     }
     if !(120..=640).contains(&manifest.width) {
         return Err(format!("width {} is outside 120..=640", manifest.width));
@@ -297,21 +297,20 @@ pub fn serve<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: Request<Vec<u8>>
 struct ServedFile {
     path: PathBuf,
     bytes: Vec<u8>,
-    csp: Option<String>,
+    csp: String,
 }
 
 impl ServedFile {
     fn into_response(self) -> Response<Vec<u8>> {
-        let mut response = Response::builder()
+        Response::builder()
             .header(header::CONTENT_TYPE, mime_type(&self.path))
             // Widget iframes have an opaque origin, and module scripts are fetched with CORS.
             .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(header::CACHE_CONTROL, "no-cache")
-            .header("X-Content-Type-Options", "nosniff");
-        if let Some(csp) = self.csp {
-            response = response.header(header::CONTENT_SECURITY_POLICY, csp);
-        }
-        response.body(self.bytes).unwrap()
+            .header("X-Content-Type-Options", "nosniff")
+            .header(header::CONTENT_SECURITY_POLICY, self.csp)
+            .body(self.bytes)
+            .unwrap()
     }
 }
 
@@ -319,14 +318,14 @@ fn resolve<R: Runtime>(app: &AppHandle<R>, raw_path: &str) -> Result<ServedFile,
     let path = percent_decode_str(raw_path).decode_utf8().map_err(|_| StatusCode::BAD_REQUEST)?;
     let (first, rest) = path.trim_start_matches('/').split_once('/').unwrap_or((path.trim_start_matches('/'), ""));
 
-    let (base, relative, csp) = if first == SDK_PREFIX {
+    let (base, relative, manifest) = if first == SDK_PREFIX {
         (sdk_dir(app).ok_or(StatusCode::NOT_FOUND)?, rest.to_string(), None)
     } else {
         let widgets = app.state::<Registry>();
         let widgets = widgets.widgets.read().unwrap();
         let widget = widgets.iter().find(|w| w.manifest.id == first).ok_or(StatusCode::NOT_FOUND)?;
         let relative = if rest.is_empty() { widget.manifest.entry.clone() } else { rest.to_string() };
-        (widget.dir.clone(), relative, Some(widget_csp(&widget.manifest)))
+        (widget.dir.clone(), relative, Some(widget.manifest.clone()))
     };
 
     let relative = safe_relative_path(&relative).ok_or(StatusCode::FORBIDDEN)?;
@@ -336,11 +335,22 @@ fn resolve<R: Runtime>(app: &AppHandle<R>, raw_path: &str) -> Result<ServedFile,
         return Err(StatusCode::FORBIDDEN);
     }
     let bytes = fs::read(&path).map_err(|_| StatusCode::NOT_FOUND)?;
-    let csp = csp.filter(|_| mime_type(&path).starts_with("text/html"));
+    // Every response carries the policy, not only HTML: an SVG opened as a document and a
+    // script started as a worker are governed by their own response's CSP, and without one
+    // they could run scripts or fetch anywhere. SVG never needs scripts.
+    let csp = match manifest {
+        Some(manifest) => widget_csp(&manifest, !is_svg(&path)),
+        None => SDK_CSP.to_string(),
+    };
     Ok(ServedFile { path, bytes, csp })
 }
 
-fn widget_csp(manifest: &WidgetManifest) -> String {
+/// Policy of the SDK files: they are only imported as subresources, which ignore it, so it
+/// matters only if a widget tries to open one as a page or a worker.
+const SDK_CSP: &str = "default-src 'none'";
+
+/// The widget's policy; `scripts` is false for documents that have no business running any.
+fn widget_csp(manifest: &WidgetManifest, scripts: bool) -> String {
     let origin = if cfg!(windows) {
         format!("http://{SCHEME}.localhost")
     } else {
@@ -353,16 +363,28 @@ fn widget_csp(manifest: &WidgetManifest) -> String {
     } else {
         manifest.network.join(" ")
     };
+    let script = if scripts { format!("{own} {sdk}") } else { "'none'".to_string() };
     format!(
-        "default-src 'none'; script-src {own} {sdk}; style-src {own} {sdk} 'unsafe-inline'; \
+        "default-src 'none'; script-src {script}; style-src {own} {sdk} 'unsafe-inline'; \
          img-src {own} data: blob:; font-src {own} {sdk}; media-src {own} data: blob:; \
          connect-src {connect}; form-action 'none'; base-uri 'none'"
     )
 }
 
+fn extension(path: &Path) -> String {
+    path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase()
+}
+
+fn is_html(path: &Path) -> bool {
+    matches!(extension(path).as_str(), "html" | "htm")
+}
+
+fn is_svg(path: &Path) -> bool {
+    extension(path) == "svg"
+}
+
 fn mime_type(path: &Path) -> &'static str {
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
-    match extension.as_str() {
+    match extension(path).as_str() {
         "html" | "htm" => "text/html; charset=utf-8",
         "js" | "mjs" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
@@ -489,9 +511,27 @@ mod tests {
     fn csp_limits_scripts_and_network_to_the_manifest() {
         let mut m = manifest("dev.lizun.hello");
         m.network = vec!["https://api.example.com".into()];
-        let csp = widget_csp(&m);
+        let csp = widget_csp(&m, true);
         assert!(csp.contains("default-src 'none'"));
         assert!(csp.contains("connect-src https://api.example.com;"));
         assert!(csp.contains("/dev.lizun.hello/"));
+
+        let svg = widget_csp(&m, false);
+        assert!(svg.contains("script-src 'none';"), "{svg}");
+        assert!(svg.contains("connect-src https://api.example.com;"));
+    }
+
+    #[test]
+    fn entry_must_be_an_html_page() {
+        for good in ["index.html", "app/Main.HTM"] {
+            let mut widget = manifest("dev.lizun.hello");
+            widget.entry = good.into();
+            assert!(validate(&widget).is_ok(), "{good} should be accepted");
+        }
+        for bad in ["main.svg", "index.html.svg", "main.js", "index", "../index.html"] {
+            let mut widget = manifest("dev.lizun.hello");
+            widget.entry = bad.into();
+            assert!(validate(&widget).is_err(), "{bad} should be rejected");
+        }
     }
 }

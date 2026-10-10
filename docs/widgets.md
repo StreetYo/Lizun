@@ -30,7 +30,7 @@ my-widget/
 | Field | Meaning |
 |---|---|
 | `id` | 3–64 lowercase letters, digits, dots or dashes. Unique. |
-| `entry` | HTML file to load (default `index.html`). |
+| `entry` | HTML file to load (default `index.html`); it must end in `.html` or `.htm`. |
 | `width` | Column width in logical pixels, 120–640 (default 240). |
 | `permissions` | `media:read`, `media:control`, `storage`, `activity`. Anything else is rejected. |
 | `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed). Empty means no network. |
@@ -280,6 +280,19 @@ back. Why the island works this way is in [ADR 0003](adr/0003-keyboard-on-demand
 The iframe has an opaque origin, so a widget cannot read the island page, cookies or
 `localStorage`, or call the Tauri backend. Scripts may only come from the widget's own folder
 and `/__sdk/`; inline scripts are blocked. Network requests are limited to `network`.
+
+Both limits are a Content Security Policy that Lizun sends with every file of the widget, not
+only its pages, so a worker started from the widget's folder is held to them too. SVG files
+are served with scripts turned off. The CSP limits what the widget can load and `fetch`; it is
+best-effort against side channels that browsers do not put under CSP, such as DNS prefetching
+or WebRTC, so `network` tells the user where the widget talks to, not a guarantee that no data
+can leave.
+
+The widget stays on its `entry` page. Its frame cannot be pointed at anything but widget files,
+and when a page in the frame navigates it anyway (to another file, or with
+`location.reload()`), the island stops answering that frame and starts the widget over from
+`entry` in a new one. A widget that keeps doing this right after every start is stopped. Build
+a widget as a single page and change what it shows with scripts.
 
 ## Installing
 

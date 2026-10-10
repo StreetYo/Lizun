@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Widget frames may only show widget files, even when a widget's page navigates its own
+         frame; see src-tauri/src/widgets.rs and lib/widgets/host.ts. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="frame-src http://lizun-widget.localhost lizun-widget://localhost"
+    />
     <title>Lizun</title>
   </head>
   <body>
