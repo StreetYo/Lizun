@@ -819,6 +819,7 @@
                 onpointermove={(event) => reorder.move(event)}
                 onpointerup={(event) => reorder.end(event)}
                 onpointercancel={(event) => reorder.end(event)}
+                onlostpointercapture={(event) => reorder.end(event)}
                 onkeydown={(event) => layoutKey(event, index)}
               ><DotsSixVertical size={18} weight="bold" /></button>
               <div class="text">

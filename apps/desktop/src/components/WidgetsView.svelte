@@ -26,6 +26,8 @@
   interface Drag {
     id: string;
     pointerId: number;
+    /** The element that holds the pointer. */
+    holder: Element;
     from: Place;
     /** Where the widget goes if it is dropped now. */
     target: Place;
@@ -94,13 +96,17 @@
 
   function grab(event: PointerEvent, id: string): void {
     const place = places.get(id);
-    if (event.button !== 0 || drag || !place || !view) return;
+    // A drag whose element went away with the pointer never got its pointerup; it is over.
+    const dragging = drag?.holder.hasPointerCapture(drag.pointerId);
+    if (event.button !== 0 || dragging || !place || !view) return;
     event.preventDefault();
-    (event.currentTarget as Element).setPointerCapture(event.pointerId);
+    const holder = event.currentTarget as Element;
+    holder.setPointerCapture(event.pointerId);
     const origin = view.getBoundingClientRect();
     drag = {
       id,
       pointerId: event.pointerId,
+      holder,
       from: { row: place.row, index: place.index },
       target: { row: place.row, index: place.index },
       hold: { x: event.clientX - origin.left - place.x, y: event.clientY - origin.top - place.y },
@@ -138,7 +144,7 @@
     drag.target = { row, index };
   }
 
-  /** Drops on pointerup; pointercancel puts the widget back. */
+  /** Drops on pointerup; pointercancel or a lost pointer capture puts the widget back. */
   function drop(event: PointerEvent): void {
     if (!drag || event.pointerId !== drag.pointerId) return;
     const { id, from, target } = drag;
@@ -149,6 +155,12 @@
     }
     drag = null;
   }
+
+  // Closing the island ends editing and removes the element that holds the pointer, so no
+  // pointerup or pointercancel comes to end a drag.
+  $effect(() => {
+    if (!editing) drag = null;
+  });
 
   function setShown(entry: LayoutEntry, enabled: boolean): void {
     save(setWidgetEnabled(layout, entry.id, enabled));
@@ -203,6 +215,7 @@
             onpointermove={move}
             onpointerup={drop}
             onpointercancel={drop}
+            onlostpointercapture={drop}
           ></div>
           <button class="remove" title={t('island.hideWidget', { name: entry.name })} onclick={() => setShown(entry, false)}>
             <Minus size={11} weight="bold" />
