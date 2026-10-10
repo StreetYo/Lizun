@@ -141,6 +141,7 @@
     "windowTitle": "Lizun Settings",
     "nav": {
       "general": "General",
+      "shortcuts": "Shortcuts",
       "media": "Media",
       "widgets": "Widgets",
       "clipboard": "Clipboard",
@@ -180,6 +181,38 @@
       "opening": "Opening",
       "hoverDelay": "Hover delay",
       "hoverDelayHint": "How long to hold the pointer at the top edge before the island opens, from {min} to {max} seconds. A longer delay prevents accidental opens."
+    },
+    "shortcuts": {
+      "title": "Shortcuts",
+      "intro": "Shortcuts work in any app. Use a key with two modifiers, such as Ctrl+Shift+K, a side mouse button (alone or with modifiers) or F13–F24. Single keys, the main mouse buttons and the wheel cannot be used, nor combinations Windows and apps need.",
+      "island": "Island",
+      "music": "Music",
+      "toggleIsland": "Open or close the island",
+      "toggleIslandHint": "Opened this way, it closes by itself after a few seconds unless you point at it.",
+      "playPause": "Play or pause",
+      "nextTrack": "Next track",
+      "previousTrack": "Previous track",
+      "notSet": "Not set",
+      "press": "Press a shortcut",
+      "recordingHint": "Press the keys or a side mouse button. Esc cancels.",
+      "change": "Change the shortcut: {action}",
+      "turnOff": "Turn off",
+      "taken": "Another app or Windows already uses this shortcut. Choose another one.",
+      "inUse": "This shortcut is already set for “{action}”.",
+      "note": "Music shortcuts control the player shown on the island. Shortcuts are off while one is being recorded.",
+      "keys": {
+        "space": "Space",
+        "mouseBack": "Mouse Back",
+        "mouseForward": "Mouse Forward"
+      },
+      "refused": {
+        "key": "This key cannot be used: Windows and apps need it.",
+        "modifier": "Hold Ctrl, Alt or Win with the key, or use a side mouse button. Alone or with Shift, the key types or works in apps.",
+        "oneModifier": "Combinations with one modifier, such as Ctrl+C or Win+D, belong to Windows and apps. Add a second modifier.",
+        "altGr": "Ctrl+Alt with a letter, digit or sign types characters on many keyboard layouts. Use Ctrl+Shift or Alt+Shift, or add Win.",
+        "system": "Windows uses this combination.",
+        "apps": "Most apps use this combination."
+      }
     },
     "widgets": {
       "title": "Widgets",

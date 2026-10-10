@@ -22,6 +22,9 @@ export const HOVER_MARGIN = 4;
 /** Delay before leaving closes the island. Opening waits for the user's hover delay preference. */
 export const CLOSE_DELAY_MS = 320;
 
+/** The island opened by its shortcut closes after this long if the pointer never comes to it. */
+export const SHORTCUT_CLOSE_DELAY_MS = 5000;
+
 /** While the mini island is hidden, only this strip along the top edge reacts to the cursor,
  * so the invisible island does not block clicks on the windows below. */
 export const HOT_ZONE_HEIGHT = 4;

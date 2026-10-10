@@ -1,6 +1,7 @@
 mod calendar;
 mod clipboard;
 mod file_tray;
+mod hotkeys;
 mod http;
 mod i18n;
 mod ics;
@@ -48,6 +49,9 @@ pub fn run() {
             clipboard::clipboard_remove,
             clipboard::clipboard_clear,
             file_tray::file_tray_allow,
+            hotkeys::hotkeys_check,
+            hotkeys::hotkeys_pause,
+            hotkeys::hotkeys_status,
             widgets::widgets_list,
             widgets::widgets_reload,
             widgets::widgets_open_folder,
@@ -78,6 +82,7 @@ pub fn run() {
             system_tray::setup(app)?;
             media::start(app.handle());
             let preferences = preferences::current(app.handle());
+            hotkeys::start(app.handle(), &preferences.hotkeys);
             browser::start(app.handle(), preferences.browser_media, preferences.browser_media_port);
             Ok(())
         })

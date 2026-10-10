@@ -24,6 +24,10 @@ list, and widgets anyone can write and install.
 - Clipboard history: text, pictures and files you copy, in the island's Clipboard tab; click
   one to copy it again. How long entries stay and how many are kept (or no limit) are set in
   Settings > Clipboard; passwords that apps mark as private are never saved.
+- Global shortcuts to open or close the island (Alt+Shift+Space by default) and for play/pause,
+  next and previous track, set or turned off in Settings > Shortcuts. Side mouse buttons work
+  too; single keys, the main mouse buttons and combinations Windows needs are refused (see
+  [ADR 0009](docs/adr/0009-global-shortcuts.md)).
 - Third-party widgets in a sandbox, with a permission manifest and their own settings (see
   [docs/widgets.md](docs/widgets.md)). Install them in Settings from a GitHub link, a zip
   archive or a folder: Lizun checks the widget and shows its permissions before installing it.

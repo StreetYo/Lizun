@@ -325,7 +325,13 @@ pub fn media_artwork(state: State<'_, MediaState>, key: String) -> Option<String
 }
 
 #[tauri::command]
-pub fn media_control(app: AppHandle, state: State<'_, MediaState>, command: MediaCommand) -> Result<(), String> {
+pub fn media_control(app: AppHandle, command: MediaCommand) -> Result<(), String> {
+    control(&app, command)
+}
+
+/// Sends a command to the player on the island.
+pub fn control(app: &AppHandle, command: MediaCommand) -> Result<(), String> {
+    let state = app.state::<MediaState>();
     let (source, id, playing) = {
         let arbiter = state.arbiter.lock().unwrap();
         let shown = arbiter.shown().ok_or("nothing is playing")?;
@@ -337,7 +343,7 @@ pub fn media_control(app: AppHandle, state: State<'_, MediaState>, command: Medi
             let controller = controller.as_ref().ok_or("media backend is unavailable")?;
             controller.send(&id, command)
         }
-        Source::Browser => crate::browser::control(&app, &id, command, playing),
+        Source::Browser => crate::browser::control(app, &id, command, playing),
     }
 }
 

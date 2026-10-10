@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
   import { open } from '@tauri-apps/plugin-dialog';
   import ArrowClockwise from 'phosphor-svelte/lib/ArrowClockwise';
@@ -12,14 +12,24 @@
   import GearSix from 'phosphor-svelte/lib/GearSix';
   import GithubLogo from 'phosphor-svelte/lib/GithubLogo';
   import Info from 'phosphor-svelte/lib/Info';
+  import Keyboard from 'phosphor-svelte/lib/Keyboard';
   import MusicNotes from 'phosphor-svelte/lib/MusicNotes';
   import PuzzlePiece from 'phosphor-svelte/lib/PuzzlePiece';
   import Trash from 'phosphor-svelte/lib/Trash';
+  import X from 'phosphor-svelte/lib/X';
   import { browserMedia } from '../lib/browserMedia.svelte';
   import { clipboardHistory } from '../lib/clipboard.svelte';
+  import {
+    hotkeyStatus,
+    modifiersOf,
+    shortcutOfKey,
+    shortcutOfMouse,
+    shortcutParts,
+    type Refusal,
+  } from '../lib/hotkeys.svelte';
   import { i18n, LANGUAGES, t, tSplit, type MessageKey } from '../lib/i18n.svelte';
   import { invoke, isTauri, onFileDrag } from '../lib/platform';
-  import { preferences, WIDGET_ROWS, type IslandVisibility } from '../lib/preferences.svelte';
+  import { preferences, WIDGET_ROWS, type HotkeyAction, type IslandVisibility } from '../lib/preferences.svelte';
   import { Reorder } from '../lib/reorder.svelte';
   import { WidgetInstaller } from '../lib/widgets/installer.svelte';
   import {
@@ -33,7 +43,7 @@
   import { localized, type SettingSpec, type SettingValue, type WidgetManifest } from '../lib/widgets/registry.svelte';
   import { widgetSettings, type SettingsOwner } from '../lib/widgets/settings.svelte';
 
-  type Section = 'general' | 'media' | 'widgets' | 'clipboard' | 'about';
+  type Section = 'general' | 'shortcuts' | 'media' | 'widgets' | 'clipboard' | 'about';
 
   const VISIBILITY: IslandVisibility[] = ['always', 'autoHide', 'hidden'];
 
@@ -65,6 +75,7 @@
     void preferences.start();
     void browserMedia.start();
     void clipboardHistory.start();
+    void hotkeyStatus.start();
     void widgetSettings.start();
     void (async () => {
       info = (await invoke('app_info')) ?? info;
@@ -233,6 +244,105 @@
       error = t('settings.errors.save', { error: String(err) });
     }
   }
+
+  /** Global shortcuts, grouped as the settings show them. */
+  const SHORTCUT_GROUPS: { title: 'island' | 'music'; actions: HotkeyAction[] }[] = [
+    { title: 'island', actions: ['toggleIsland'] },
+    { title: 'music', actions: ['playPause', 'nextTrack', 'previousTrack'] },
+  ];
+  const HOTKEY_ACTIONS = SHORTCUT_GROUPS.flatMap((group) => group.actions);
+
+  /** The action whose shortcut is being recorded. Set shortcuts are off meanwhile, so pressing
+   * one is recorded instead of firing. */
+  let recording = $state<HotkeyAction | null>(null);
+  /** Modifiers held while recording, shown before the key comes. */
+  let heldModifiers = $state<string[]>([]);
+  let shortcutError = $state<{ action: HotkeyAction; text: string } | null>(null);
+
+  function record(action: HotkeyAction): void {
+    if (recording === action) {
+      stopRecording();
+      return;
+    }
+    if (!recording) void invoke('hotkeys_pause', { paused: true });
+    recording = action;
+    heldModifiers = [];
+    shortcutError = null;
+  }
+
+  function stopRecording(): void {
+    if (!recording) return;
+    recording = null;
+    heldModifiers = [];
+    void invoke('hotkeys_pause', { paused: false });
+  }
+
+  /** Takes a pressed shortcut if the core allows it and no other action has it; otherwise says
+   * why and keeps recording, so the next try can follow at once. */
+  async function useShortcut(action: HotkeyAction, shortcut: string): Promise<void> {
+    let written: string;
+    try {
+      written = await invoke<string>('hotkeys_check', { shortcut });
+    } catch (refusal) {
+      shortcutError = { action, text: t(`settings.shortcuts.refused.${refusal as Refusal}`) };
+      return;
+    }
+    const other = HOTKEY_ACTIONS.find((other) => other !== action && preferences.value.hotkeys[other] === written);
+    if (other) {
+      shortcutError = { action, text: t('settings.shortcuts.inUse', { action: t(`settings.shortcuts.${other}`) }) };
+      return;
+    }
+    stopRecording();
+    shortcutError = null;
+    await setHotkey(action, written);
+  }
+
+  async function setHotkey(action: HotkeyAction, shortcut: string | null): Promise<void> {
+    error = null;
+    try {
+      await preferences.update({ hotkeys: { ...preferences.value.hotkeys, [action]: shortcut } });
+    } catch (err) {
+      error = t('settings.errors.save', { error: String(err) });
+    }
+  }
+
+  function recordKey(event: KeyboardEvent): void {
+    if (!recording) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat) return;
+    const shortcut = shortcutOfKey(event);
+    if (!shortcut) heldModifiers = modifiersOf(event);
+    else if (shortcut === 'Escape') stopRecording();
+    else void useShortcut(recording, shortcut);
+  }
+
+  function releaseKey(event: KeyboardEvent): void {
+    if (recording) heldModifiers = modifiersOf(event);
+  }
+
+  function recordMouse(event: MouseEvent): void {
+    if (!recording) return;
+    const shortcut = shortcutOfMouse(event);
+    if (shortcut) {
+      event.preventDefault();
+      void useShortcut(recording, shortcut);
+    } else if (!(event.target as Element).closest('.recorder.recording')) {
+      // A click anywhere else ends recording; on the recorder itself its own click does.
+      stopRecording();
+    }
+  }
+
+  /** The side buttons would also go back and forward in the window's history. */
+  function holdBackSideButton(event: MouseEvent): void {
+    if (recording && shortcutOfMouse(event)) event.preventDefault();
+  }
+
+  $effect(() => {
+    if (section !== 'shortcuts') untrack(stopRecording);
+  });
+
+  onDestroy(stopRecording);
 
   const browserMediaState = $derived.by((): { text: string; tone: 'ok' | 'wait' | 'bad' } => {
     const status = browserMedia.status;
@@ -478,11 +588,23 @@
   </div>
 {/snippet}
 
+<svelte:window
+  onkeydowncapture={recordKey}
+  onkeyupcapture={releaseKey}
+  onmousedowncapture={recordMouse}
+  onmouseupcapture={holdBackSideButton}
+  onauxclick={holdBackSideButton}
+  onblur={stopRecording}
+/>
+
 <div class="window">
   <nav>
     <div class="brand"><span class="logo"></span>Lizun</div>
     <button class:active={section === 'general'} onclick={() => (section = 'general')}>
       <GearSix size={16} weight="fill" /> {t('settings.nav.general')}
+    </button>
+    <button class:active={section === 'shortcuts'} onclick={() => (section = 'shortcuts')}>
+      <Keyboard size={16} weight="fill" /> {t('settings.nav.shortcuts')}
     </button>
     <button class:active={section === 'media'} onclick={() => (section = 'media')}>
       <MusicNotes size={16} weight="fill" /> {t('settings.nav.media')}
@@ -605,6 +727,58 @@
           </span>
         </div>
       </div>
+    {:else if section === 'shortcuts'}
+      <h1>{t('settings.shortcuts.title')}</h1>
+      <p class="intro">{t('settings.shortcuts.intro')}</p>
+      {#each SHORTCUT_GROUPS as group (group.title)}
+        <h2>{t(`settings.shortcuts.${group.title}`)}</h2>
+        <div class="card">
+          {#each group.actions as action (action)}
+            {@const shortcut = preferences.value.hotkeys[action]}
+            {@const active = recording === action}
+            {@const refused = shortcutError?.action === action ? shortcutError.text : null}
+            <div class="row">
+              <div class="text">
+                <div class="label">{t(`settings.shortcuts.${action}`)}</div>
+                {#if refused}
+                  <div class="hint status bad">{refused}</div>
+                {:else if active}
+                  <div class="hint">{t('settings.shortcuts.recordingHint')}</div>
+                {:else if shortcut && hotkeyStatus.taken.includes(action)}
+                  <div class="hint status bad">{t('settings.shortcuts.taken')}</div>
+                {:else if action === 'toggleIsland'}
+                  <div class="hint">{t('settings.shortcuts.toggleIslandHint')}</div>
+                {/if}
+              </div>
+              <span class="shortcut">
+                <button
+                  class="recorder"
+                  class:recording={active}
+                  aria-label={t('settings.shortcuts.change', { action: t(`settings.shortcuts.${action}`) })}
+                  onclick={() => record(action)}
+                >
+                  {#if active}
+                    {#each heldModifiers as part (part)}<kbd>{part}</kbd>{/each}
+                    <span class="placeholder">{heldModifiers.length ? '…' : t('settings.shortcuts.press')}</span>
+                  {:else if shortcut}
+                    {#each shortcutParts(shortcut) as part (part)}<kbd>{part}</kbd>{/each}
+                  {:else}
+                    <span class="placeholder">{t('settings.shortcuts.notSet')}</span>
+                  {/if}
+                </button>
+                <button
+                  class="icon-button"
+                  title={t('settings.shortcuts.turnOff')}
+                  aria-label={t('settings.shortcuts.turnOff')}
+                  disabled={!shortcut || active}
+                  onclick={() => setHotkey(action, null)}
+                ><X size={14} weight="bold" /></button>
+              </span>
+            </div>
+          {/each}
+        </div>
+      {/each}
+      <p class="note">{t('settings.shortcuts.note')}</p>
     {:else if section === 'widgets'}
       <div class="head">
         <h1>{t('settings.widgets.title')}</h1>
@@ -1053,6 +1227,8 @@
     font-size: 13.5px;
     font-weight: 500;
     color: var(--text-secondary);
+    text-align: left;
+    white-space: nowrap;
   }
 
   nav button:hover {
@@ -1576,6 +1752,60 @@
   .icon-button:hover {
     color: var(--danger);
     background: rgba(255, 255, 255, 0.05);
+  }
+
+  .shortcut {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .recorder {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    min-width: 150px;
+    height: 30px;
+    padding: 0 6px 0 10px;
+    box-sizing: border-box;
+    border: 1px solid #3a3940;
+    border-radius: 8px;
+    background: #141316;
+  }
+
+  .recorder:hover {
+    border-color: #4a4950;
+  }
+
+  .recorder.recording {
+    border-color: var(--accent);
+  }
+
+  .recorder kbd {
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: var(--card-raised);
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .recorder .placeholder {
+    padding-right: 4px;
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+  }
+
+  .recorder.recording .placeholder {
+    color: var(--accent);
+  }
+
+  .icon-button:disabled {
+    visibility: hidden;
   }
 
   .confirm {

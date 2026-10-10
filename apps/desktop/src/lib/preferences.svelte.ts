@@ -14,6 +14,12 @@ export interface WidgetSlot {
 /** The island shows its widgets in up to this many rows (see src-tauri/src/preferences.rs). */
 export const WIDGET_ROWS = 2;
 
+/** What a global shortcut does (see `Action` in src-tauri/src/hotkeys.rs). */
+export type HotkeyAction = 'toggleIsland' | 'playPause' | 'nextTrack' | 'previousTrack';
+
+/** Shortcut of each action, written like `Ctrl+Alt+Space` (see lib/hotkeys.svelte.ts); null turns it off. */
+export type Hotkeys = Record<HotkeyAction, string | null>;
+
 export interface Preferences {
   /** Interface language: a code such as `ru`, or `system` to follow Windows (see i18n.svelte.ts). */
   language: string;
@@ -42,6 +48,8 @@ export interface Preferences {
   clipboardLimitEnabled: boolean;
   /** Most entries the history keeps when it is limited (1–1000). */
   clipboardLimit: number;
+  /** Global shortcuts for the island and the music. */
+  hotkeys: Hotkeys;
 }
 
 const DEFAULTS: Preferences = {
@@ -60,6 +68,7 @@ const DEFAULTS: Preferences = {
   clipboardLifetimeHours: 24,
   clipboardLimitEnabled: true,
   clipboardLimit: 50,
+  hotkeys: { toggleIsland: 'Alt+Shift+Space', playPause: null, nextTrack: null, previousTrack: null },
 };
 
 /** Preferences shared by all windows; changes made anywhere arrive through an event. */

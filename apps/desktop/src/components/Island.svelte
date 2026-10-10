@@ -15,11 +15,12 @@
     HOVER_MARGIN,
     PILL_WIDTH,
     SHADOW_MARGIN,
+    SHORTCUT_CLOSE_DELAY_MS,
     type IslandSize,
   } from '../lib/geometry';
   import { media } from '../lib/media.svelte';
   import { miniIsland } from '../lib/miniIsland.svelte';
-  import { onFileDrag, setHitRegion } from '../lib/platform';
+  import { listen, onFileDrag, setHitRegion } from '../lib/platform';
   import { preferences } from '../lib/preferences.svelte';
   import {
     CLOSE_SPRING,
@@ -306,6 +307,19 @@
     if (mode === 'expanded' && !keyboard.held) closeTimer = setTimeout(() => setMode('collapsed'), CLOSE_DELAY_MS);
   }
 
+  /** The island's shortcut opens and closes it. Opened that way it stays while the pointer is on
+   * it and closes as usual when the pointer leaves; if the pointer never comes, it closes after
+   * a while, so it does not keep covering the top of the screen. */
+  function toggleFromShortcut(): void {
+    if (mode === 'dropping') return;
+    if (mode === 'expanded') {
+      setMode('collapsed');
+      return;
+    }
+    setMode('expanded');
+    if (!hovering) closeTimer = setTimeout(() => setMode('collapsed'), SHORTCUT_CLOSE_DELAY_MS);
+  }
+
   function zoneAt(x: number, y: number): string | null {
     const element = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-drop-zone]');
     return element?.dataset.dropZone ?? null;
@@ -351,11 +365,15 @@
       },
     }).then((stop) => (stopListening = stop));
 
+    let stopShortcut = () => {};
+    void listen('hotkeys://toggle-island', toggleFromShortcut).then((stop) => (stopShortcut = stop));
+
     window.addEventListener('lizun:drag-out-finished', closeSoon);
     debug.setMode = setMode;
     debug.getMode = () => mode;
     return () => {
       stopListening();
+      stopShortcut();
       window.removeEventListener('lizun:drag-out-finished', closeSoon);
     };
   });

@@ -3,6 +3,7 @@
 use tauri::WebviewWindow;
 
 use crate::clipboard::{Clip, Kinds, Picture};
+use crate::hotkeys::Shortcut;
 use crate::island::Rect;
 use crate::media::{MediaCommand, Player};
 
@@ -74,4 +75,16 @@ pub fn write_clipboard_files(_owner: &WebviewWindow, _paths: &[String]) -> Resul
 
 pub fn write_clipboard_picture(_owner: &WebviewWindow, _picture: &Picture, _png: &[u8]) -> Result<(), String> {
     Err("the clipboard is not supported on this platform yet".into())
+}
+
+pub struct HotkeyListener;
+
+impl HotkeyListener {
+    pub fn set(&self, shortcuts: Vec<Option<Shortcut>>) -> Vec<bool> {
+        vec![false; shortcuts.len()]
+    }
+}
+
+pub fn spawn_hotkey_listener(_on_press: impl Fn(usize) + Send + 'static) -> Option<HotkeyListener> {
+    None
 }

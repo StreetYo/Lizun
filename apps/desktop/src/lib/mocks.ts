@@ -203,6 +203,10 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     case 'clipboard_clear':
       mockClipboard = [];
       return undefined as T;
+    case 'hotkeys_check':
+      return (args as { shortcut: string }).shortcut as T;
+    case 'hotkeys_status':
+      return [] as T;
     case 'browser_media_status':
       return { enabled: true, port: 6869, listening: true, error: null, browsers: [] } as T;
     default:

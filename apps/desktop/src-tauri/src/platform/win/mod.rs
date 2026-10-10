@@ -1,4 +1,5 @@
 mod clipboard;
+mod hotkeys;
 mod media;
 mod window;
 
@@ -7,6 +8,7 @@ use std::path::Path;
 pub use clipboard::{
     clipboard_sequence, read_clipboard, write_clipboard_files, write_clipboard_picture, write_clipboard_text,
 };
+pub use hotkeys::{HotkeyListener, spawn_hotkey_listener};
 pub use media::{MediaController, spawn_media_watcher};
 pub use window::{
     on_deactivated, prepare_island_window, release_keyboard, set_hit_region, show_without_activation, take_keyboard,

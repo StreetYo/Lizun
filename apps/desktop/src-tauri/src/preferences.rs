@@ -87,6 +87,8 @@ pub struct Preferences {
     /// Whether the history keeps at most `clipboard_limit` entries.
     pub clipboard_limit_enabled: bool,
     pub clipboard_limit: u32,
+    /// Global shortcuts for the island and the music.
+    pub hotkeys: crate::hotkeys::Hotkeys,
 }
 
 impl Default for Preferences {
@@ -107,6 +109,7 @@ impl Default for Preferences {
             clipboard_lifetime_hours: 24,
             clipboard_limit_enabled: true,
             clipboard_limit: 50,
+            hotkeys: crate::hotkeys::Hotkeys::default(),
         }
     }
 }
@@ -128,6 +131,7 @@ impl Preferences {
             !slot.id.is_empty() && slot.id.len() <= MAX_WIDGET_ID_LEN && seen.insert(slot.id.clone())
         });
         self.widgets.truncate(MAX_WIDGET_SLOTS);
+        self.hotkeys = self.hotkeys.cleaned();
         for slot in &mut self.widgets {
             slot.row = slot.row.min(WIDGET_ROWS - 1);
         }
@@ -180,6 +184,7 @@ pub fn preferences_set(
     crate::browser::configure(&app, preferences.browser_media, preferences.browser_media_port);
     crate::i18n::apply(&app, &preferences.language);
     crate::clipboard::configure(&app, &preferences);
+    crate::hotkeys::configure(&app, &preferences.hotkeys);
     if let Err(err) = app.emit(EVENT_CHANGED, &preferences) {
         log::warn!("failed to announce the new preferences: {err}");
     }
@@ -221,10 +226,11 @@ mod tests {
             clipboard_lifetime_hours: 0,
             clipboard_limit_enabled: false,
             clipboard_limit: 200,
+            hotkeys: crate::hotkeys::Hotkeys { toggle_island: None, ..Default::default() },
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200}"#
+            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null}}"#
         );
     }
 
