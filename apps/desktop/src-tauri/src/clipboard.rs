@@ -133,7 +133,7 @@ enum Preview {
 struct FileView {
     path: String,
     folder: bool,
-    /// Moved or deleted since it was copied.
+    /// Moved or deleted since it was copied. Files on network shares are not checked.
     missing: bool,
 }
 
@@ -187,8 +187,10 @@ pub fn start(app: &AppHandle) {
     let mut index = dir.as_deref().map(load).unwrap_or_default();
     if let Some(dir) = &dir {
         remove_strays(dir, &index);
-        if let Err(err) = app.asset_protocol_scope().allow_directory(dir, false) {
-            log::warn!("pictures in the clipboard history cannot be shown: {err}");
+        for entry in &index.entries {
+            if matches!(entry.content, Content::Picture { .. }) {
+                allow_picture(app, dir, entry.id);
+            }
         }
     }
     index.next_id = index.next_id.max(index.entries.iter().map(|entry| entry.id + 1).max().unwrap_or(0));
@@ -320,6 +322,7 @@ fn record(app: &AppHandle, history: &History, clip: Clip) {
                     log::warn!("could not keep a copied picture: {err}");
                     return;
                 }
+                allow_picture(app, &dir, id);
             }
             Content::Picture { width: picture.width, height: picture.height, hash }
         }
@@ -380,6 +383,7 @@ impl State {
         }
     }
 
+    /// The entries as the island shows them, before [`check_files`].
     fn views(&self) -> Vec<EntryView> {
         self.index.entries.iter().map(|entry| self.view(entry)).collect()
     }
@@ -400,14 +404,7 @@ impl State {
                 files: paths
                     .iter()
                     .take(PREVIEW_FILES)
-                    .map(|path| {
-                        let metadata = fs::metadata(path);
-                        FileView {
-                            path: path.clone(),
-                            folder: metadata.as_ref().is_ok_and(|metadata| metadata.is_dir()),
-                            missing: metadata.is_err(),
-                        }
-                    })
+                    .map(|path| FileView { path: path.clone(), folder: false, missing: false })
                     .collect(),
                 count: paths.len(),
             },
@@ -416,8 +413,33 @@ impl State {
     }
 }
 
+/// Fills in which files are folders and which are gone. Done outside the history's lock, since
+/// a slow disk keeps it waiting.
+fn check_files(views: &mut [EntryView]) {
+    for view in views {
+        let Preview::Files { files, .. } = &mut view.preview else { continue };
+        for file in files.iter_mut().filter(|file| !is_network_path(&file.path)) {
+            let metadata = fs::metadata(&file.path);
+            file.folder = metadata.as_ref().is_ok_and(|metadata| metadata.is_dir());
+            file.missing = metadata.is_err();
+        }
+    }
+}
+
+/// A path on another computer, such as `\\server\share\file`. Lizun does not look at those on
+/// its own: a slow or offline share blocks for many seconds, and opening one signs in to that
+/// server with the user's Windows credentials.
+fn is_network_path(path: &str) -> bool {
+    let path = path.replace('/', "\\");
+    match path.strip_prefix(r"\\?\").or_else(|| path.strip_prefix(r"\\.\")) {
+        Some(rest) => rest.get(..4).is_some_and(|unc| unc.eq_ignore_ascii_case(r"UNC\")),
+        None => path.starts_with(r"\\"),
+    }
+}
+
 fn announce(app: &AppHandle) {
-    let views = app.state::<History>().state.lock().unwrap().views();
+    let mut views = app.state::<History>().state.lock().unwrap().views();
+    check_files(&mut views);
     if let Err(err) = app.emit(EVENT_CHANGED, views) {
         log::warn!("failed to announce the clipboard history: {err}");
     }
@@ -449,11 +471,19 @@ fn remove_strays(dir: &Path, index: &Index) {
     }
 }
 
-/// Lets the island show the pictures among the first files of a copy.
+/// Lets the island show a picture of the history. Only the pictures are allowed, not the folder,
+/// which also holds every copied text.
+fn allow_picture(app: &AppHandle, dir: &Path, id: u64) {
+    if let Err(err) = app.asset_protocol_scope().allow_file(picture_path(dir, id)) {
+        log::warn!("a picture in the clipboard history cannot be shown: {err}");
+    }
+}
+
+/// Lets the island show the pictures among the first files of a copy, except on network shares.
 fn allow_previews(app: &AppHandle, content: &Content) {
     let Content::Files { paths } = content else { return };
     let scope = app.asset_protocol_scope();
-    for path in paths.iter().take(PREVIEW_FILES) {
+    for path in paths.iter().take(PREVIEW_FILES).filter(|path| !is_network_path(path)) {
         let extension = Path::new(path).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
         if IMAGE_EXTENSIONS.contains(&extension.as_str())
             && let Err(err) = scope.allow_file(path)
@@ -510,9 +540,12 @@ pub fn decode_png(bytes: &[u8]) -> Option<Picture> {
     Some(Picture { width, height, rgba })
 }
 
-#[tauri::command]
+// Off the main thread, since checking the files can be slow.
+#[tauri::command(async)]
 pub fn clipboard_history(history: tauri::State<'_, History>) -> Vec<EntryView> {
-    history.state.lock().unwrap().views()
+    let mut views = history.state.lock().unwrap().views();
+    check_files(&mut views);
+    views
 }
 
 /// Puts an entry back on the clipboard. The watcher then sees it and moves it to the top.
@@ -528,7 +561,8 @@ pub async fn clipboard_copy(app: AppHandle, window: WebviewWindow, id: u64) -> R
     match content {
         Content::Text { text } => crate::platform::write_clipboard_text(&window, &text),
         Content::Files { paths } => {
-            let present: Vec<String> = paths.into_iter().filter(|path| Path::new(path).exists()).collect();
+            let present: Vec<String> =
+                paths.into_iter().filter(|path| is_network_path(path) || Path::new(path).exists()).collect();
             if present.is_empty() {
                 return Err("the files are gone".into());
             }
@@ -543,7 +577,7 @@ pub async fn clipboard_copy(app: AppHandle, window: WebviewWindow, id: u64) -> R
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clipboard_remove(app: AppHandle, id: u64) {
     {
         let history = app.state::<History>();
@@ -556,7 +590,7 @@ pub fn clipboard_remove(app: AppHandle, id: u64) {
     announce(&app);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clipboard_clear(app: AppHandle) {
     {
         let history = app.state::<History>();
@@ -630,13 +664,26 @@ mod tests {
     #[test]
     fn previews_the_first_files() {
         let existing = std::env::temp_dir().display().to_string();
-        let paths = vec![existing.clone(), "Z:\\gone\\a.txt".into(), "b".into(), "c".into(), "d".into()];
+        let paths = vec![existing.clone(), "Z:\\gone\\a.txt".into(), r"\\server\share\a.png".into(), "c".into(), "d".into()];
         let state = state(vec![], Rules { enabled: true, kinds: ALL, lifetime: None, limit: None });
-        let view = state.view(&Entry { id: 1, copied_at: 0, content: Content::Files { paths } });
-        let Preview::Files { files, count } = view.preview else { panic!("files") };
-        assert_eq!((files.len(), count), (PREVIEW_FILES, 5));
+        let mut views = vec![state.view(&Entry { id: 1, copied_at: 0, content: Content::Files { paths } })];
+        check_files(&mut views);
+        let Preview::Files { files, count } = &views[0].preview else { panic!("files") };
+        assert_eq!((files.len(), *count), (PREVIEW_FILES, 5));
         assert!(files[0].folder && !files[0].missing);
         assert!(!files[1].folder && files[1].missing);
+        // Not looked at, so not reported gone either.
+        assert!(!files[2].folder && !files[2].missing);
+    }
+
+    #[test]
+    fn knows_network_paths() {
+        for path in [r"\\server\share\a.png", "//server/share/a.png", r"\\?\UNC\server\share\a.png", r"\\?\unc\server\a"] {
+            assert!(is_network_path(path), "{path}");
+        }
+        for path in [r"C:\Users\me\a.png", r"\\?\C:\Users\me\a.png", r"\\.\C:\a.png", "relative.txt", ""] {
+            assert!(!is_network_path(path), "{path}");
+        }
     }
 
     #[test]

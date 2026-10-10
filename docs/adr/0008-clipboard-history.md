@@ -47,7 +47,10 @@ place for things kept at hand (the file tray), so the history belongs there as a
 - **The history survives a restart**: `history.json` in the `clipboard` folder of the app data
   folder, with a PNG file per picture. The island gets previews only (the first 300 characters
   of a text, the path of a picture, served through the asset protocol); a click copies the
-  whole entry from the core.
+  whole entry from the core. Only the picture files are in the asset protocol's scope, not the
+  folder, so a page cannot read `history.json` with every copied text. Copied files on network
+  shares (`\\server\share\...`) are never opened by Lizun on its own: a slow or offline share
+  would block for many seconds, and opening one signs in to that server.
 
 ## Alternatives considered
 
