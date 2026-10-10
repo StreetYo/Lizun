@@ -1,7 +1,7 @@
 {
   "name": "lizun",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open-source dynamic island with installable widgets",
   "license": "MIT OR Apache-2.0",
   "scripts": {
