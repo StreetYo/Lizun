@@ -8,6 +8,7 @@ import { debug } from '../debug';
 import { i18n } from '../i18n.svelte';
 import { keyboard } from '../keyboard.svelte';
 import { media, type MediaCommand } from '../media.svelte';
+import { ui } from '../ui.svelte';
 import { activities, parseActivity } from './activities.svelte';
 import type { WidgetManifest } from './registry.svelte';
 import { widgetSettings } from './settings.svelte';
@@ -15,6 +16,8 @@ import { widgetSettings } from './settings.svelte';
 const PROTOCOL = 1;
 const STORAGE_PREFIX = 'lizun.widget.';
 const MAX_STORED_VALUE = 64 * 1024;
+/** How long after the pointer left a widget it may still take the keyboard. */
+const KEYBOARD_GRACE_MS = 1_000;
 
 /** Design tokens handed to widgets so they can match the island. */
 const THEME = {
@@ -32,6 +35,19 @@ interface Frame {
   widget: WidgetManifest;
   iframe: HTMLIFrameElement;
   mediaSubscribed: boolean;
+  /** Whether the pointer is over the iframe, and when it last left it. */
+  pointerOver: boolean;
+  pointerLeftAt: number;
+}
+
+/** A refusal the SDK passes on as a `LizunError` with this code. */
+class Refusal extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 type Handler = (frame: Frame, params: Record<string, unknown>) => unknown;
@@ -84,10 +100,14 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
     handler: ({ widget }, params) => activities.set(widget.id, parseActivity(params.activity)),
   },
   'activity.clear': { permission: 'activity', handler: ({ widget }) => activities.clear(widget.id) },
-  // Sent by the SDK when a text field in the widget gains or loses focus; needs no permission.
+  // Sent by the SDK when a text field in the widget gains or loses focus; needs no permission,
+  // but the keyboard is only handed to a widget the user is working with (see `mayTakeKeyboard`).
   'keyboard.set': {
     handler: async (frame, params) => {
       const take = params.take === true;
+      if (take && !mayTakeKeyboard(frame)) {
+        throw new Refusal('not_allowed', 'the keyboard is only given while the user points at the open widget');
+      }
       await keyboard.set(take);
       if (take) send(frame, { kind: 'event', name: 'keyboard.granted', payload: null });
     },
@@ -105,6 +125,17 @@ const frames = new Map<MessageEventSource, Frame>();
 function storageKey(widget: WidgetManifest, key: unknown): string {
   if (typeof key !== 'string' || !key || key.length > 128) throw new Error('invalid storage key');
   return `${STORAGE_PREFIX}${widget.id}.${key}`;
+}
+
+/**
+ * Taking the keyboard brings the island to the foreground, so a widget may only do it while the
+ * island is open and the user is pointing at it: the SDK asks when a text field is clicked,
+ * and the pointer is on the widget then. A click inside the iframe is not visible to this page,
+ * but the pointer entering and leaving the iframe element is, so that is what is checked, with
+ * a short grace for a request that arrives just after the pointer moved away.
+ */
+function mayTakeKeyboard(frame: Frame): boolean {
+  return ui.expanded && (frame.pointerOver || Date.now() - frame.pointerLeftAt < KEYBOARD_GRACE_MS);
 }
 
 function mediaPayload() {
@@ -142,7 +173,8 @@ async function handleMessage(event: MessageEvent): Promise<void> {
   try {
     reply({ result: (await method.handler(frame, message.params ?? {})) ?? null });
   } catch (err) {
-    reply({ error: { code: 'failed', message: err instanceof Error ? err.message : String(err) } });
+    const code = err instanceof Refusal ? err.code : 'failed';
+    reply({ error: { code, message: err instanceof Error ? err.message : String(err) } });
   }
 }
 
@@ -180,7 +212,16 @@ export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest, 
   }
   const source = iframe.contentWindow;
   if (!source) return () => {};
-  frames.set(source, { widget, iframe, mediaSubscribed: false });
+  const pointerOver = iframe.matches(':hover');
+  const frame: Frame = { widget, iframe, mediaSubscribed: false, pointerOver, pointerLeftAt: 0 };
+  frames.set(source, frame);
+  const pointerEntered = () => (frame.pointerOver = true);
+  const pointerLeft = () => {
+    frame.pointerOver = false;
+    frame.pointerLeftAt = Date.now();
+  };
+  iframe.addEventListener('pointerenter', pointerEntered);
+  iframe.addEventListener('pointerleave', pointerLeft);
   // The first load is the widget's entry page; any later one means a page in the frame
   // navigated it, perhaps to a file that is not the widget's page. The frame's origin is
   // opaque, so where it went cannot be checked, and the window stays the same object, so the
@@ -195,6 +236,8 @@ export function attachWidget(iframe: HTMLIFrameElement, widget: WidgetManifest, 
   iframe.addEventListener('load', loaded);
   return () => {
     iframe.removeEventListener('load', loaded);
+    iframe.removeEventListener('pointerenter', pointerEntered);
+    iframe.removeEventListener('pointerleave', pointerLeft);
     frames.delete(source);
   };
 }

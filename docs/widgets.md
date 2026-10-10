@@ -260,8 +260,13 @@ The island never takes the keyboard on its own, so the app you work in keeps it.
 changes that only while a text field in the widget is in use: clicking an `<input>`,
 `<textarea>` or `contenteditable` element brings the island to the foreground, and it stays
 open even if the cursor leaves. The keyboard goes back to the previously active window when
-the field loses focus, when Esc is pressed in it, or when the user clicks anything else.
-Nothing needs to be declared for this.
+the field loses focus, when Esc is pressed in it, when the user clicks anything else, or when
+the island closes. Nothing needs to be declared for this.
+
+The island hands the keyboard only to the widget the user is working with: while the island is
+open and the pointer is on that widget. A field the widget focuses on its own at other times
+(with `autofocus` or `focus()`) does not get the keyboard, and the request is refused with a
+`LizunError` whose `code` is `not_allowed`.
 
 To hand the keyboard back yourself, for example after a form is submitted:
 
