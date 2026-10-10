@@ -275,13 +275,18 @@ fn repeated(list: &[String]) -> Option<&String> {
 }
 
 /// Accepts `https://host[:port]` with an optional leading `*.` wildcard, nothing else, so a
-/// manifest cannot smuggle extra CSP directives.
+/// manifest cannot smuggle extra CSP directives. A wildcard needs at least two labels after it,
+/// so it cannot cover a whole top-level domain such as `*.com`.
 fn is_valid_origin(origin: &str) -> bool {
     let Some(host) = origin.strip_prefix("https://") else { return false };
-    let host = host.strip_prefix("*.").unwrap_or(host);
+    let (wildcard, host) = match host.strip_prefix("*.") {
+        Some(rest) => (true, rest),
+        None => (false, host),
+    };
     let (name, port) = host.split_once(':').unwrap_or((host, ""));
-    !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    let labels: Vec<&str> = name.split('.').collect();
+    labels.iter().all(|label| !label.is_empty() && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        && (!wildcard || labels.len() >= 2)
         && port.chars().all(|c| c.is_ascii_digit())
 }
 
@@ -457,7 +462,24 @@ mod tests {
         let mut network = manifest("dev.lizun.hello");
         network.network = vec!["https://api.example.com".into(), "https://*.example.org:8443".into()];
         assert!(validate(&network).is_ok());
-        for bad in ["http://api.example.com", "https://a.com/path", "https://a.com; script-src *", "*"] {
+        for good in ["https://localhost:8080", "https://*.api.example.com"] {
+            network.network = vec![good.into()];
+            assert!(validate(&network).is_ok(), "{good} should be accepted");
+        }
+        let bad = [
+            "http://api.example.com",
+            "https://a.com/path",
+            "https://a.com; script-src *",
+            "*",
+            "https://*.com",
+            "https://*.com:443",
+            "https://*.",
+            "https://*",
+            "https://a..com",
+            "https://.example.com",
+            "https://example.com.",
+        ];
+        for bad in bad {
             network.network = vec![bad.into()];
             assert!(validate(&network).is_err(), "{bad} should be rejected");
         }

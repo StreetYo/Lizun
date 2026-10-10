@@ -33,7 +33,7 @@ my-widget/
 | `entry` | HTML file to load (default `index.html`); it must end in `.html` or `.htm`. |
 | `width` | Column width in logical pixels, 120–640 (default 240). |
 | `permissions` | `media:read`, `media:control`, `storage`, `activity`, each listed once. Anything else is rejected. |
-| `network` | Origins the widget may `fetch` (`https://host[:port]`, `*.` allowed), each listed once. Empty means no network. |
+| `network` | Origins the widget may `fetch` (`https://host[:port]`), each listed once. `https://*.example.com` covers the subdomains; a wildcard needs at least two labels after it, so `*.com` is rejected. Empty means no network. |
 | `settings` | Options the user can change in Settings > Widgets, see [Settings](#settings). |
 | `locales` | Translations of `name`, `description` and the settings, see [Languages](#languages). |
 
