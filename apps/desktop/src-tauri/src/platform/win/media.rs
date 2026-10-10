@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use windows::Foundation::TypedEventHandler;
 use windows::Media::Control::{
@@ -30,6 +30,11 @@ const UNIX_EPOCH_TICKS: i64 = 116_444_736_000_000_000;
 
 /// How often the session list is compared with Windows', in case a change event was missed.
 const RESYNC_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Wait before asking Windows for the sessions again after it failed; doubled on every failure
+/// in a row, up to `RETRY_MAX`.
+const RETRY_MIN: Duration = Duration::from_secs(1);
+const RETRY_MAX: Duration = Duration::from_secs(30);
 
 enum Message {
     SessionsChanged,
@@ -58,9 +63,7 @@ pub fn spawn_media_watcher(on_update: impl Fn(Vec<Player>) + Send + 'static) -> 
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         }
-        if let Err(err) = watch(thread_tx, rx, on_update) {
-            log::warn!("media watcher stopped: {err}");
-        }
+        run(thread_tx, rx, on_update);
     });
     match spawned {
         Ok(_) => Some(MediaController { tx }),
@@ -71,18 +74,78 @@ pub fn spawn_media_watcher(on_update: impl Fn(Vec<Player>) + Send + 'static) -> 
     }
 }
 
-/// All WinRT calls happen on this thread. Event callbacks only post messages back to it, and
-/// bursts of messages are coalesced so a track change produces one update.
-fn watch(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(Vec<Player>)) -> windows::core::Result<()> {
+/// Watches the sessions for as long as the app runs. The session manager fails for good when
+/// the shell goes away (explorer restarting, or not ready yet at autostart), so it is asked for
+/// again, with a growing wait in between; meanwhile no player is shown.
+fn run(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(Vec<Player>)) {
+    let mut last: Vec<Player> = Vec::new();
+    let mut retry = RETRY_MIN;
+    loop {
+        let started = Instant::now();
+        let Err(err) = watch(&tx, &rx, &on_update, &mut last) else { return };
+        if started.elapsed() > RETRY_MAX {
+            retry = RETRY_MIN;
+        }
+        log::warn!("media sessions unavailable, trying again in {retry:?}: {err}");
+        if !last.is_empty() {
+            last.clear();
+            on_update(Vec::new());
+        }
+        if !wait_to_retry(&rx, retry) {
+            return;
+        }
+        retry = (retry * 2).min(RETRY_MAX);
+    }
+}
+
+/// Waits `delay`; commands that come meanwhile have no session to go to. False once the
+/// controller is gone.
+fn wait_to_retry(rx: &Receiver<Message>, delay: Duration) -> bool {
+    let until = Instant::now() + delay;
+    loop {
+        match rx.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            Ok(Message::Command(key, command)) => log::debug!("media command {command:?} while reconnecting: {key}"),
+            Ok(_) => {}
+            Err(RecvTimeoutError::Timeout) => return true,
+            Err(RecvTimeoutError::Disconnected) => return false,
+        }
+    }
+}
+
+/// One session manager, until it fails (`Err`) or the controller is gone (`Ok`). Its handlers
+/// are removed either way, so a failed manager does not keep posting.
+fn watch(
+    tx: &Sender<Message>,
+    rx: &Receiver<Message>,
+    on_update: &impl Fn(Vec<Player>),
+    last: &mut Vec<Player>,
+) -> windows::core::Result<()> {
     let manager = SessionManager::RequestAsync()?.join()?;
     let sessions_tx = tx.clone();
-    manager.SessionsChanged(&TypedEventHandler::new(move |_, _| {
+    let token = manager.SessionsChanged(&TypedEventHandler::new(move |_, _| {
         let _ = sessions_tx.send(Message::SessionsChanged);
         Ok(())
     }))?;
-
     let mut watched: Vec<WatchedSession> = Vec::new();
-    let mut last: Vec<Player> = Vec::new();
+    let result = follow(&manager, tx, rx, on_update, last, &mut watched);
+    for session in watched {
+        session.unsubscribe();
+    }
+    let _ = manager.RemoveSessionsChanged(token);
+    result
+}
+
+/// All WinRT calls happen on this thread. Event callbacks only post messages back to it, and
+/// bursts of messages are coalesced so a track change produces one update. Only a failure of
+/// the manager itself ends this; a session that fails is left out.
+fn follow(
+    manager: &SessionManager,
+    tx: &Sender<Message>,
+    rx: &Receiver<Message>,
+    on_update: &impl Fn(Vec<Player>),
+    last: &mut Vec<Player>,
+    watched: &mut Vec<WatchedSession>,
+) -> windows::core::Result<()> {
     let _ = tx.send(Message::SessionsChanged);
 
     loop {
@@ -91,7 +154,7 @@ fn watch(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(Vec<Play
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => break,
         };
-        let mut sessions_changed = first.is_none() && session_keys(&manager)? != keys(&watched);
+        let mut sessions_changed = first.is_none() && session_keys(manager)? != keys(watched);
         let mut properties_changed = HashSet::new();
         let mut commands = Vec::new();
         for message in first.into_iter().chain(rx.try_iter()) {
@@ -112,8 +175,8 @@ fn watch(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(Vec<Play
                     artwork.insert(cover.0, cover.1);
                 }
             }
-            for (key, session) in keyed_sessions(&manager)? {
-                let mut session = WatchedSession::subscribe(key, session, &tx);
+            for (key, session) in keyed_sessions(manager)? {
+                let mut session = WatchedSession::subscribe(key, session, tx);
                 session.artwork = artwork.remove(&session.key);
                 properties_changed.insert(session.key.clone());
                 watched.push(session);
@@ -144,8 +207,8 @@ fn watch(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(Vec<Play
         }
 
         let players: Vec<Player> = watched.iter().filter_map(WatchedSession::player).collect();
-        if players != last {
-            last = players.clone();
+        if players != *last {
+            *last = players.clone();
             on_update(players);
         }
     }
@@ -153,12 +216,19 @@ fn watch(tx: Sender<Message>, rx: Receiver<Message>, on_update: impl Fn(Vec<Play
 }
 
 /// Sessions with their player ids. The AppUserModelID is the id; an app with several sessions
-/// gets a counter appended to the later ones.
+/// gets a counter appended to the later ones. A session that cannot be read (one closing right
+/// now) is left out; only a failed list is an error.
 fn keyed_sessions(manager: &SessionManager) -> windows::core::Result<Vec<(String, Session)>> {
     let mut seen: HashMap<String, usize> = HashMap::new();
     let mut sessions = Vec::new();
     for session in manager.GetSessions()? {
-        let app = session.SourceAppUserModelId()?.to_string();
+        let app = match session.SourceAppUserModelId() {
+            Ok(app) => app.to_string(),
+            Err(err) => {
+                log::debug!("skipping a media session that cannot be read: {err}");
+                continue;
+            }
+        };
         let count = seen.entry(app.clone()).or_default();
         let key = if *count == 0 { app } else { format!("{app}#{count}") };
         *count += 1;
