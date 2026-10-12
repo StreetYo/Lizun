@@ -3,6 +3,9 @@ import { invoke, listen } from './platform';
 /** How the island looks while collapsed (see src-tauri/src/preferences.rs). */
 export type IslandVisibility = 'always' | 'autoHide' | 'hidden';
 
+/** Shape of the mini island (see src-tauri/src/preferences.rs). */
+export type MiniIslandShape = 'notch' | 'pill';
+
 /** A widget's place in the island (see src-tauri/src/preferences.rs). */
 export interface WidgetSlot {
   id: string;
@@ -24,6 +27,10 @@ export interface Preferences {
   /** Interface language: a code such as `ru`, or `system` to follow Windows (see i18n.svelte.ts). */
   language: string;
   islandVisibility: IslandVisibility;
+  /** Joined to the top edge like a notch, or a capsule floating just below it. */
+  miniIslandShape: MiniIslandShape;
+  /** With the pill-shaped mini island, the open island floats below the top edge too. */
+  floatingPanel: boolean;
   /** How long the mini island stays in "hide after a delay" mode (200–10000 ms). */
   autoHideDelayMs: number;
   /** In "hide after a delay" mode, show the mini island when a track starts, pauses or changes. */
@@ -55,6 +62,8 @@ export interface Preferences {
 const DEFAULTS: Preferences = {
   language: 'system',
   islandVisibility: 'always',
+  miniIslandShape: 'notch',
+  floatingPanel: false,
   autoHideDelayMs: 1000,
   showOnMediaChange: true,
   openDelayMs: 100,

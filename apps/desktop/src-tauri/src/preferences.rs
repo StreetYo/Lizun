@@ -29,6 +29,17 @@ pub enum IslandVisibility {
     Hidden,
 }
 
+/// Shape of the mini island.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MiniIslandShape {
+    /// Joined to the top edge, rounded only at the bottom, like a notch.
+    #[default]
+    Notch,
+    /// A capsule floating just below the top edge, rounded all round.
+    Pill,
+}
+
 /// Allowed range for how long the mini island stays in auto-hide mode.
 pub const AUTO_HIDE_DELAY_MS: std::ops::RangeInclusive<u32> = 200..=10_000;
 /// Allowed range for how long the cursor has to stay on the island before it opens.
@@ -67,6 +78,9 @@ pub struct Preferences {
     /// Interface language: a code such as `ru`, or `system` to follow Windows.
     pub language: String,
     pub island_visibility: IslandVisibility,
+    pub mini_island_shape: MiniIslandShape,
+    /// With the pill-shaped mini island, the open island floats below the top edge too.
+    pub floating_panel: bool,
     pub auto_hide_delay_ms: u32,
     /// In auto-hide mode, show the mini island when a track starts, pauses or changes.
     pub show_on_media_change: bool,
@@ -101,6 +115,8 @@ impl Default for Preferences {
         Self {
             language: crate::i18n::SYSTEM.into(),
             island_visibility: IslandVisibility::default(),
+            mini_island_shape: MiniIslandShape::default(),
+            floating_panel: false,
             auto_hide_delay_ms: 1000,
             show_on_media_change: true,
             open_delay_ms: 100,
@@ -310,6 +326,8 @@ mod tests {
         let hidden = Preferences {
             language: "ru".into(),
             island_visibility: IslandVisibility::Hidden,
+            mini_island_shape: MiniIslandShape::Pill,
+            floating_panel: true,
             auto_hide_delay_ms: 1500,
             show_on_media_change: false,
             open_delay_ms: 400,
@@ -327,7 +345,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"language":"ru","islandVisibility":"hidden","autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null}}"#
+            r#"{"language":"ru","islandVisibility":"hidden","miniIslandShape":"pill","floatingPanel":true,"autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null}}"#
         );
     }
 

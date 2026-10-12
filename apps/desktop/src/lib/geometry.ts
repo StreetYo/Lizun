@@ -7,6 +7,9 @@ export const CAPSULE_MIN_WIDTH = 88;
 export const CAPSULE_MAX_WIDTH = 360;
 export const COLLAPSED_HEIGHT = 32;
 export const COLLAPSED_RADIUS = 12;
+/** The pill-shaped mini island, and the open island when it floats too, stay this far below
+ * the top edge. */
+export const PILL_TOP_GAP = 6;
 /** Going into the top edge, the mini island narrows to this share of its width as it rises. */
 export const CONCEALED_WIDTH_SCALE = 0.6;
 export const EXPANDED_RADIUS = 30;
@@ -32,5 +35,10 @@ export const HOT_ZONE_HEIGHT = 4;
 export interface IslandSize {
   width: number;
   height: number;
+  /** Radius of the bottom corners. */
   radius: number;
+  /** Radius of the top corners; zero while the island is joined to the top edge. */
+  topRadius: number;
+  /** Distance from the top edge of the screen. */
+  top: number;
 }

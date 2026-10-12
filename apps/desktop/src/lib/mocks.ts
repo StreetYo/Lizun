@@ -21,6 +21,8 @@ const startedAt = Date.now();
 let mockPreferences: unknown = {
   language: 'system',
   islandVisibility: 'always',
+  miniIslandShape: 'notch',
+  floatingPanel: false,
   autoHideDelayMs: 1000,
   showOnMediaChange: true,
   openDelayMs: 100,

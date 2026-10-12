@@ -29,7 +29,13 @@
   } from '../lib/hotkeys.svelte';
   import { i18n, LANGUAGES, t, tSplit, type MessageKey } from '../lib/i18n.svelte';
   import { invoke, isTauri, onFileDrag } from '../lib/platform';
-  import { preferences, WIDGET_ROWS, type HotkeyAction, type IslandVisibility } from '../lib/preferences.svelte';
+  import {
+    preferences,
+    WIDGET_ROWS,
+    type HotkeyAction,
+    type IslandVisibility,
+    type MiniIslandShape,
+  } from '../lib/preferences.svelte';
   import { Reorder } from '../lib/reorder.svelte';
   import { WidgetInstaller } from '../lib/widgets/installer.svelte';
   import {
@@ -46,6 +52,7 @@
   type Section = 'general' | 'shortcuts' | 'media' | 'widgets' | 'clipboard' | 'about';
 
   const VISIBILITY: IslandVisibility[] = ['always', 'autoHide', 'hidden'];
+  const SHAPES: MiniIslandShape[] = ['notch', 'pill'];
 
   const builtIn = $derived([
     ...BUILT_IN_WIDGETS.map((widget) => ({ id: widget.id, ...builtInTexts(widget.texts) })),
@@ -145,6 +152,15 @@
     }
   }
 
+  async function setShape(value: MiniIslandShape): Promise<void> {
+    error = null;
+    try {
+      await preferences.update({ miniIslandShape: value });
+    } catch (err) {
+      error = t('settings.errors.save', { error: String(err) });
+    }
+  }
+
   /** Allowed ranges in seconds; they match src-tauri/src/preferences.rs. */
   const AUTO_HIDE_DELAY_S = { min: 0.2, max: 10 };
   const OPEN_DELAY_S = { min: 0, max: 2 };
@@ -175,7 +191,13 @@
   const PORTS = { min: 1024, max: 65535 };
 
   async function toggle(
-    key: 'browserMedia' | 'showOnMediaChange' | 'clipboardHistory' | 'clipboardLimitEnabled' | ClipboardKind,
+    key:
+      | 'browserMedia'
+      | 'showOnMediaChange'
+      | 'floatingPanel'
+      | 'clipboardHistory'
+      | 'clipboardLimitEnabled'
+      | ClipboardKind,
   ): Promise<void> {
     error = null;
     try {
@@ -755,6 +777,36 @@
         {/each}
       </div>
       <p class="note">{t('settings.general.edgeNote')}</p>
+
+      <h2>{t('settings.general.shape')}</h2>
+      <div class="card" role="radiogroup" aria-label={t('settings.general.shape')}>
+        {#each SHAPES as option (option)}
+          {@const checked = preferences.value.miniIslandShape === option}
+          <button class="row option" role="radio" aria-checked={checked} onclick={() => setShape(option)}>
+            <span class="radio" class:checked></span>
+            <span class="text">
+              <span class="label">{t(`settings.general.${option}`)}</span>
+              <span class="hint">{t(`settings.general.${option}Hint`)}</span>
+            </span>
+          </button>
+          {#if option === 'pill' && checked}
+            <div class="row delay">
+              <div class="text">
+                <div class="label">{t('settings.general.floatingPanel')}</div>
+                <div class="hint">{t('settings.general.floatingPanelHint')}</div>
+              </div>
+              <button
+                class="switch"
+                class:on={preferences.value.floatingPanel}
+                role="switch"
+                aria-checked={preferences.value.floatingPanel}
+                aria-label={t('settings.general.floatingPanel')}
+                onclick={() => toggle('floatingPanel')}
+              ><span></span></button>
+            </div>
+          {/if}
+        {/each}
+      </div>
 
       <h2>{t('settings.general.opening')}</h2>
       <div class="card">

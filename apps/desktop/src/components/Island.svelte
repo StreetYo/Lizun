@@ -13,6 +13,7 @@
     EXPANDED_RADIUS,
     HOT_ZONE_HEIGHT,
     HOVER_MARGIN,
+    PILL_TOP_GAP,
     PILL_WIDTH,
     SHADOW_MARGIN,
     SHORTCUT_CLOSE_DELAY_MS,
@@ -96,19 +97,33 @@
     });
   });
 
+  const pill = $derived(preferences.value.miniIslandShape === 'pill');
+  const floating = $derived(pill && preferences.value.floatingPanel);
+
+  /** The pill-shaped mini island floats just below the top edge, rounded all round. As the
+   * island opens it rises into the edge, unless the open island is set to float too. */
   const target: IslandSize = $derived.by(() => {
-    if (mode === 'expanded') return { ...panelSize, radius: EXPANDED_RADIUS };
-    if (mode === 'dropping') return { ...DROP_SIZE, radius: EXPANDED_RADIUS };
+    const open = floating
+      ? { radius: EXPANDED_RADIUS, topRadius: EXPANDED_RADIUS, top: PILL_TOP_GAP }
+      : { radius: EXPANDED_RADIUS, topRadius: 0, top: 0 };
+    if (mode === 'expanded') return { ...panelSize, ...open };
+    if (mode === 'dropping') return { ...DROP_SIZE, ...open };
     const width = Math.max(CAPSULE_MIN_WIDTH, Math.ceil(capsuleWidth));
+    const radius = pill ? COLLAPSED_HEIGHT / 2 : COLLAPSED_RADIUS;
+    const topRadius = pill ? radius : 0;
     // Going into the edge it narrows while it rises, and comes back out the same way.
-    if (concealed) return { width: Math.round(width * CONCEALED_WIDTH_SCALE), height: 0, radius: COLLAPSED_RADIUS };
-    return { width, height: COLLAPSED_HEIGHT, radius: COLLAPSED_RADIUS };
+    if (concealed) return { width: Math.round(width * CONCEALED_WIDTH_SCALE), height: 0, radius, topRadius, top: 0 };
+    return { width, height: COLLAPSED_HEIGHT, radius, topRadius, top: pill ? PILL_TOP_GAP : 0 };
   });
 
   // The island starts inside the top edge and comes out once the preferences are loaded.
   const width = new Spring(PILL_WIDTH);
   const height = new Spring(0);
   const radius = new Spring(0);
+  const topRadius = new Spring(0);
+  const top = new Spring(0);
+  const shape = [width, height, radius, topRadius, top];
+  let gap: HTMLDivElement;
 
   /** A content layer fades in, sharpens and grows to full size on springs that run in the same
    * frames as the shape, so a change of mind mid-way carries on from where it is. */
@@ -152,9 +167,16 @@
   function render(): void {
     island.style.width = `${width.value}px`;
     island.style.height = `${Math.max(0, height.value)}px`;
+    island.style.top = `${Math.max(0, top.value)}px`;
     const r = `${Math.max(0, radius.value)}px`;
     island.style.borderBottomLeftRadius = r;
     island.style.borderBottomRightRadius = r;
+    const tr = `${Math.max(0, topRadius.value)}px`;
+    island.style.borderTopLeftRadius = tr;
+    island.style.borderTopRightRadius = tr;
+    // The gap above the pill counts as the island, so pointing at the very edge still opens it.
+    gap.style.width = `${width.value}px`;
+    gap.style.height = `${Math.max(0, top.value)}px`;
     // The shadow grows with the height, so the collapsed pill stays flat.
     const openness = Math.min(1, Math.max(0, (height.value - COLLAPSED_HEIGHT) / 80));
     island.style.setProperty('--shadow-alpha', (0.55 * openness).toFixed(3));
@@ -165,9 +187,7 @@
     const dt = lastTime ? Math.min((now - lastTime) / 1000, 0.064) : 1 / 60;
     lastTime = now;
     timestamps.push(now);
-    const settled = [width.step(dt), height.step(dt), radius.step(dt), ...layers.map((layer) => layer.step(dt))].every(
-      Boolean,
-    );
+    const settled = [...shape, ...layers].map((part) => part.step(dt)).every(Boolean);
     render();
     if (settled) {
       frame = 0;
@@ -191,6 +211,7 @@
   function updateRegion(): void {
     const w = Math.max(width.value, target.width);
     const h = Math.max(height.value, target.height);
+    const offset = Math.max(top.value, target.top);
     if (concealed && h < 1) {
       setHitRegion([
         {
@@ -211,7 +232,7 @@
         x: Math.floor(x - side),
         y: 0,
         width: Math.ceil(w + side * 2),
-        height: Math.ceil(h + bottom),
+        height: Math.ceil(offset + h + bottom),
       },
     ]);
   }
@@ -221,6 +242,8 @@
     width.setTarget(target.width, params);
     height.setTarget(target.height, params);
     radius.setTarget(target.radius, params);
+    topRadius.setTarget(target.topRadius, params);
+    top.setTarget(target.top, params);
     // Grow the input region before the island grows into it; it shrinks once settled.
     untrack(updateRegion);
     animate();
@@ -399,6 +422,7 @@
   {#if concealed}
     <div class="sensor" style:width="{PILL_WIDTH + 2 * HOVER_MARGIN}px" style:height="{HOT_ZONE_HEIGHT}px"></div>
   {/if}
+  <div class="gap" bind:this={gap}></div>
   <div class="island" bind:this={island}>
     <div class="layer live" class:visible={mode === 'collapsed' && !concealed} bind:this={live.element}>
       <LiveActivity active={mode === 'collapsed' && !concealed} bind:width={capsuleWidth} />
@@ -423,7 +447,8 @@
     display: contents;
   }
 
-  .sensor {
+  .sensor,
+  .gap {
     position: absolute;
     top: 0;
     left: 50%;
