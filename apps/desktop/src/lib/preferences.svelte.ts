@@ -31,6 +31,8 @@ export interface Preferences {
   miniIslandShape: MiniIslandShape;
   /** With the pill-shaped mini island, the open island floats below the top edge too. */
   floatingPanel: boolean;
+  /** With nothing to show, the mini island stays out with eyes that look around and blink. */
+  idleEyes: boolean;
   /** How long the mini island stays in "hide after a delay" mode (200–10000 ms). */
   autoHideDelayMs: number;
   /** In "hide after a delay" mode, show the mini island when a track starts, pauses or changes. */
@@ -64,6 +66,7 @@ const DEFAULTS: Preferences = {
   islandVisibility: 'always',
   miniIslandShape: 'notch',
   floatingPanel: false,
+  idleEyes: true,
   autoHideDelayMs: 1000,
   showOnMediaChange: true,
   openDelayMs: 100,

@@ -187,6 +187,9 @@
       "pillHint": "A capsule floating just below the top edge, rounded all round.",
       "floatingPanel": "Open island floats too",
       "floatingPanelHint": "The open island also stays just below the top edge, rounded all round, instead of joining it.",
+      "idle": "Nothing to show",
+      "idleEyes": "Eyes",
+      "idleEyesHint": "With no music, files or widget activity, the mini island stays out with a pair of eyes that look around and blink, instead of going into the top edge.",
       "opening": "Opening",
       "hoverDelay": "Hover delay",
       "hoverDelayHint": "How long to hold the pointer at the top edge before the island opens, from {min} to {max} seconds. A longer delay prevents accidental opens."

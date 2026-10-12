@@ -81,6 +81,9 @@ pub struct Preferences {
     pub mini_island_shape: MiniIslandShape,
     /// With the pill-shaped mini island, the open island floats below the top edge too.
     pub floating_panel: bool,
+    /// With nothing to show, the mini island stays out with a pair of eyes that look around
+    /// and blink, instead of going into the edge.
+    pub idle_eyes: bool,
     pub auto_hide_delay_ms: u32,
     /// In auto-hide mode, show the mini island when a track starts, pauses or changes.
     pub show_on_media_change: bool,
@@ -117,6 +120,7 @@ impl Default for Preferences {
             island_visibility: IslandVisibility::default(),
             mini_island_shape: MiniIslandShape::default(),
             floating_panel: false,
+            idle_eyes: true,
             auto_hide_delay_ms: 1000,
             show_on_media_change: true,
             open_delay_ms: 100,
@@ -328,6 +332,7 @@ mod tests {
             island_visibility: IslandVisibility::Hidden,
             mini_island_shape: MiniIslandShape::Pill,
             floating_panel: true,
+            idle_eyes: false,
             auto_hide_delay_ms: 1500,
             show_on_media_change: false,
             open_delay_ms: 400,
@@ -345,7 +350,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"language":"ru","islandVisibility":"hidden","miniIslandShape":"pill","floatingPanel":true,"autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null}}"#
+            r#"{"language":"ru","islandVisibility":"hidden","miniIslandShape":"pill","floatingPanel":true,"idleEyes":false,"autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null}}"#
         );
     }
 

@@ -41,8 +41,13 @@
   import { miniIsland } from '../lib/miniIsland.svelte';
   import type { ActivityIcon, ActivityPart } from '../lib/widgets/activities.svelte';
 
-  /** Animations pause while the collapsed island is hidden behind the open panel. */
-  let { active, width = $bindable(0) }: { active: boolean; width?: number } = $props();
+  /** Animations pause while the collapsed island is hidden behind the open panel. With `eyes`,
+   * the capsule shows a pair of eyes while there is nothing else to show. */
+  let {
+    active,
+    eyes,
+    width = $bindable(0),
+  }: { active: boolean; eyes: boolean; width?: number } = $props();
 
   const ICONS: Record<ActivityIcon, typeof Alarm> = {
     alarm: Alarm,
@@ -82,7 +87,7 @@
   };
 
   type Shown = {
-    content: NonNullable<typeof miniIsland.content>;
+    content: NonNullable<typeof miniIsland.content> | { kind: 'eyes' };
     nowPlaying: typeof media.nowPlaying;
     artwork: typeof media.artwork;
     tint: typeof media.tint;
@@ -94,7 +99,7 @@
   let shown = $state.raw<Shown | null>(null);
 
   $effect.pre(() => {
-    const content = miniIsland.content;
+    const content = miniIsland.content ?? (eyes ? { kind: 'eyes' as const } : null);
     if (!content) return;
     shown = {
       content,
@@ -109,7 +114,10 @@
 <!-- Windows has no camera notch, so the closed island is a capsule as wide as what it shows:
      something at each end and a line of text in the middle. -->
 <div class="capsule" style:max-width="{CAPSULE_MAX_WIDTH}px" bind:clientWidth={width}>
-  {#if shown?.content.kind === 'media' && shown.nowPlaying}
+  {#if shown?.content.kind === 'eyes'}
+    <!-- They pop in each time the mini island comes out, then now and then look aside and blink. -->
+    <div class="eyes" class:awake={active}><span></span><span></span></div>
+  {:else if shown?.content.kind === 'media' && shown.nowPlaying}
     {@const { nowPlaying } = shown}
     {#if shown.artwork}
       <img class="art" src={shown.artwork} alt="" />
@@ -243,6 +251,95 @@
     }
     to {
       transform: scaleY(1);
+    }
+  }
+
+  /* With the capsule's padding the eyes make it 3.5 times as wide as it is high, like the logo. */
+  .eyes {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    width: 87px;
+    height: 100%;
+  }
+
+  .eyes span {
+    width: 7px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--text);
+  }
+
+  /* Pure CSS on the compositor, and only while the mini island is out. The look and the blinks
+   * run on cycles of different lengths, so they meet differently each time. */
+  .eyes.awake {
+    animation: look 17s cubic-bezier(0.45, 0, 0.2, 1) 2s infinite;
+  }
+
+  .eyes.awake span {
+    animation:
+      pop 0.42s ease-out backwards,
+      blink 11s linear infinite;
+  }
+
+  .eyes.awake span:nth-child(2) {
+    animation-delay: 0.07s, 0s;
+  }
+
+  @keyframes pop {
+    from {
+      scale: 0;
+    }
+    60% {
+      scale: 1.25;
+    }
+    to {
+      scale: 1;
+    }
+  }
+
+  @keyframes look {
+    0%,
+    28%,
+    56%,
+    100% {
+      translate: 0;
+    }
+    30%,
+    40% {
+      translate: -14px 0;
+    }
+    43%,
+    53% {
+      translate: 14px 0;
+    }
+  }
+
+  /* One blink, and later a double one. */
+  @keyframes blink {
+    0%,
+    35%,
+    36.2%,
+    88%,
+    89.2%,
+    90.2%,
+    91.4%,
+    100% {
+      transform: none;
+    }
+    35.6%,
+    88.6%,
+    90.8% {
+      transform: scaleY(0.08);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .eyes.awake,
+    .eyes.awake span {
+      animation: none;
     }
   }
 </style>

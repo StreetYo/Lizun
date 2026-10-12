@@ -23,6 +23,7 @@ let mockPreferences: unknown = {
   islandVisibility: 'always',
   miniIslandShape: 'notch',
   floatingPanel: false,
+  idleEyes: true,
   autoHideDelayMs: 1000,
   showOnMediaChange: true,
   openDelayMs: 100,
@@ -122,6 +123,8 @@ export async function mockInvoke<T>(command: string, args?: Record<string, unkno
     case 'i18n_system_language':
       return navigator.language.split('-')[0] as T;
     case 'media_snapshot':
+      // `?idle` leaves the island with nothing to show.
+      if (new URLSearchParams(location.search).has('idle')) return null as T;
       return {
         sourceApp: 'Spotify.exe',
         title: 'My Seaside Morning – Vintage Jazz',

@@ -63,13 +63,13 @@
 
   const hasActivity = $derived(miniIsland.content !== null);
 
-  /** The closed island is pulled into the top edge (zero height) when it has nothing to show or
-   * the settings hide it. Pointing at the edge still opens it, and it then grows straight out of
-   * the edge without showing the mini island. */
+  /** The closed island is pulled into the top edge (zero height) when it has nothing to show,
+   * unless the idle eyes are on, or when the settings hide it. Pointing at the edge still opens
+   * it, and it then grows straight out of the edge without showing the mini island. */
   const concealed = $derived.by(() => {
     if (mode !== 'collapsed') return false;
     // Stay in the edge until the setting is known, so "Hidden" never flashes the island.
-    if (!preferences.loaded || !hasActivity) return true;
+    if (!preferences.loaded || (!hasActivity && !preferences.value.idleEyes)) return true;
     const visibility = preferences.value.islandVisibility;
     return visibility === 'hidden' || (visibility === 'autoHide' && !peeking);
   });
@@ -425,7 +425,11 @@
   <div class="gap" bind:this={gap}></div>
   <div class="island" bind:this={island}>
     <div class="layer live" class:visible={mode === 'collapsed' && !concealed} bind:this={live.element}>
-      <LiveActivity active={mode === 'collapsed' && !concealed} bind:width={capsuleWidth} />
+      <LiveActivity
+        active={mode === 'collapsed' && !concealed}
+        eyes={preferences.value.idleEyes}
+        bind:width={capsuleWidth}
+      />
     </div>
     <div
       class="layer centered"
