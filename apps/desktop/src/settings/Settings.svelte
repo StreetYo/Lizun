@@ -195,6 +195,7 @@
       | 'browserMedia'
       | 'showOnMediaChange'
       | 'floatingPanel'
+      | 'idleEyes'
       | 'clipboardHistory'
       | 'clipboardLimitEnabled'
       | ClipboardKind,
@@ -528,6 +529,15 @@
   }
 </script>
 
+<!-- The island with its eyes, drawn like app-icon.svg. -->
+{#snippet logo(width: number)}
+  <svg class="logo" {width} height={(width * 206) / 720} viewBox="0 0 720 206" aria-hidden="true">
+    <rect width="720" height="206" rx="103" />
+    <ellipse cx="272" cy="103" rx="34" ry="50" />
+    <ellipse cx="448" cy="103" rx="34" ry="50" />
+  </svg>
+{/snippet}
+
 {#snippet widgetSettingRows(widget: SettingsOwner)}
   {#if widget.settings.length}
     {@const values = widgetSettings.of(widget)}
@@ -671,7 +681,7 @@
 
 <div class="window">
   <nav>
-    <div class="brand"><span class="logo"></span>Lizun</div>
+    <div class="brand">{@render logo(32)}Lizun</div>
     <button class:active={section === 'general'} onclick={() => (section = 'general')}>
       <GearSix size={16} weight="fill" /> {t('settings.nav.general')}
     </button>
@@ -806,6 +816,24 @@
             </div>
           {/if}
         {/each}
+      </div>
+
+      <h2>{t('settings.general.idle')}</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text">
+            <div class="label">{t('settings.general.idleEyes')}</div>
+            <div class="hint">{t('settings.general.idleEyesHint')}</div>
+          </div>
+          <button
+            class="switch"
+            class:on={preferences.value.idleEyes}
+            role="switch"
+            aria-checked={preferences.value.idleEyes}
+            aria-label={t('settings.general.idleEyes')}
+            onclick={() => toggle('idleEyes')}
+          ><span></span></button>
+        </div>
       </div>
 
       <h2>{t('settings.general.opening')}</h2>
@@ -1268,7 +1296,7 @@
     {:else}
       <h1>{t('settings.about.title')}</h1>
       <div class="card about">
-        <span class="logo big"></span>
+        {@render logo(64)}
         <div class="text">
           <div class="label">Lizun {info.version}</div>
           <div class="hint">{t('settings.about.tagline')}</div>
@@ -1317,18 +1345,17 @@
   }
 
   .logo {
-    width: 24px;
-    height: 10px;
-    border-radius: 0 0 6px 6px;
-    background: #000;
+    flex: none;
+    border-radius: 999px;
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
   }
 
-  .logo.big {
-    flex: none;
-    width: 64px;
-    height: 24px;
-    border-radius: 0 0 14px 14px;
+  .logo rect {
+    fill: #000;
+  }
+
+  .logo ellipse {
+    fill: #fff;
   }
 
   nav button {
