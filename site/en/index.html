@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lizun — Dynamic Island for Windows, free</title>
+<meta name="description" content="A black island at the top of the screen, like on the iPhone, for your Windows PC: music from any app, a file tray, clipboard history, tasks and widgets. Free.">
+<meta name="theme-color" content="#07090f">
+<link rel="canonical" href="https://streetyo.github.io/Lizun/en/">
+<link rel="alternate" hreflang="ru" href="https://streetyo.github.io/Lizun/">
+<link rel="alternate" hreflang="en" href="https://streetyo.github.io/Lizun/en/">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lizun — Dynamic Island for Windows">
+<meta property="og:description" content="Free. Music, files, clipboard, tasks and widgets in an island at the top of your screen.">
+<meta property="og:url" content="https://streetyo.github.io/Lizun/en/">
+<meta property="og:image" content="https://streetyo.github.io/Lizun/media/og-en.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" as="image" href="../media/en/hero.jpg">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/main.js" defer></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M11 3h2v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6zM4 19h16v2H4z"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.7.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9V21c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></symbol>
+  <symbol id="i-pc" viewBox="0 0 24 24"><path d="M3 4h18a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7v2h3v2H7v-2h3v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v9h16V6z"/></symbol>
+</svg>
+
+<header class="wrap top">
+  <a class="brand" href="./"><img src="../assets/icon.svg" alt="" width="32" height="32">Lizun</a>
+  <div class="pill" aria-hidden="true"><span class="eye"></span><span class="eye"></span></div>
+  <a class="lang" href="../" hreflang="ru" lang="ru">RU</a>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <span class="badge"><svg><use href="#i-pc"/></svg>An app for Windows 10 and 11 PCs</span>
+    <h1><span class="grad">Dynamic Island</span><br>for Windows</h1>
+    <p class="lead">A black island at the top of your screen, like on the iPhone. Point at it, and your music, files, everything you copied and your to-do list are right there. Free.</p>
+
+    <div class="cta">
+      <a class="btn btn-main" href="https://github.com/StreetYo/Lizun/releases/latest/download/Lizun_x64-setup.exe"><svg><use href="#i-down"/></svg>Download for Windows</a>
+      <p class="fine">Free · 3 MB · no admin rights needed</p>
+      <p class="links"><a href="https://github.com/StreetYo/Lizun"><svg><use href="#i-gh"/></svg>Open source on GitHub</a><a href="https://github.com/StreetYo/Lizun/releases/latest">Other versions</a></p>
+    </div>
+
+    <div class="notice" id="phone">
+      <p><b>You're on a phone.</b> Lizun runs on a Windows PC: send yourself the link and open it on your computer.</p>
+      <div class="row">
+        <button class="btn btn-main" type="button" data-share="Lizun — Dynamic Island for Windows. Open on your PC:">Send the link</button>
+        <button class="btn btn-ghost" type="button" data-copy="Link copied">Copy</button>
+      </div>
+      <p class="done" aria-live="polite"></p>
+    </div>
+    <div class="notice" id="other">
+      <p><b>Lizun is for Windows only for now.</b> A macOS version is planned. If you have a Windows PC, send the link there.</p>
+      <div class="row">
+        <button class="btn btn-ghost" type="button" data-copy="Link copied">Copy the link</button>
+      </div>
+      <p class="done" aria-live="polite"></p>
+    </div>
+
+    <div class="monitor">
+      <div class="screen">
+        <video data-auto muted loop playsinline preload="metadata" poster="../media/en/hero.jpg" aria-label="The Lizun island at the top of the screen: music, tasks, a file tray and the clipboard">
+          <source src="../media/en/hero.mp4" type="video/mp4">
+        </video>
+        <div class="taskbar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="stand" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <section class="wrap" id="features">
+    <h2>Everything you need, in one island</h2>
+    <p class="sub">The island stays out of your way: it doesn't take the keyboard from your apps, and clicks next to it go to the windows below.</p>
+    <div class="features">
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/music.jpg" aria-label="Music in the island"><source src="../media/en/music.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>Music from any app</h3>
+          <p>Spotify, music in the browser, Telegram: whatever plays on your PC shows up in the island with its cover and title, plus pause and next or previous track.</p>
+        </div>
+      </article>
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/tray.jpg" aria-label="Files dragged into the island's tray"><source src="../media/en/tray.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>A tray for your files</h3>
+          <p>Drop files onto the island and they wait there. Later, drag them out into any folder, email or chat.</p>
+        </div>
+      </article>
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/clipboard.jpg" aria-label="Clipboard history"><source src="../media/en/clipboard.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>Everything you copied, at hand</h3>
+          <p>Text, pictures and files you copy are kept in the Clipboard tab. Click one to copy it again. Passwords that apps mark as secret are never saved.</p>
+        </div>
+      </article>
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/tasks.jpg" aria-label="To-do list in the island"><source src="../media/en/tasks.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>Tasks right in the island</h3>
+          <p>A short to-do list always at the top of the screen. The closed island shows your next task.</p>
+        </div>
+      </article>
+    </div>
+    <ul class="extras">
+      <li>📅 Google, Outlook or iCloud calendar</li>
+      <li>⌨️ Open the island with a shortcut</li>
+      <li>👀 A pair of eyes when there's nothing to show</li>
+      <li>🧩 Rearrange and hide widgets</li>
+      <li>🌐 English and Russian</li>
+    </ul>
+  </section>
+
+  <section class="wrap" id="widgets">
+    <h2>Widgets for every taste</h2>
+    <p class="sub">Add exactly what you need. A widget installs in a couple of clicks, and Lizun shows what it may access before you install it.</p>
+    <div class="widgets">
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-weather.jpg" aria-label="Weather widget"><source src="../media/en/w-weather.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Weather</h3><p>Now and the next hours, for your city.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-pomodoro.jpg" aria-label="Pomodoro widget"><source src="../media/en/w-pomodoro.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Pomodoro</h3><p>A focus and break timer. The countdown shows even in the closed island.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-lyrics.jpg" aria-label="Lyrics widget"><source src="../media/en/w-lyrics.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Lyrics</h3><p>The words of the current track, line by line in time with the music.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-habits.jpg" aria-label="Habits widget"><source src="../media/en/w-habits.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Habits</h3><p>Check off your habits every day and keep your streaks going.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-anki.jpg" aria-label="Anki widget"><source src="../media/en/w-anki.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Anki</h3><p>Review flash cards: your Anki decks, or decks kept right in the widget.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-notepad.jpg" aria-label="Notepad widget"><source src="../media/en/w-notepad.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Notepad</h3><p>A note you can write right in the island.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-system-monitor.jpg" aria-label="System monitor widget"><source src="../media/en/w-system-monitor.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>System monitor</h3><p>Processor, graphics, memory, disk, network and battery.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="../media/en/w-ip-location.jpg" aria-label="IP and VPN widget"><source src="../media/en/w-ip-location.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>IP and VPN</h3><p>Where the internet sees you: IP, country and city. Handy to check your VPN.</p></div>
+      </article>
+    </div>
+    <div class="own">
+      <h3>Missing one? Make it!</h3>
+      <p>Anyone can make widgets for Lizun, and there are more all the time. Have an idea? Make your own widget and share it with everyone.</p>
+      <p class="fine"><a href="https://github.com/StreetYo/Lizun/blob/master/docs/widget-catalog.md">All widgets</a> · <a href="https://github.com/StreetYo/Lizun/blob/master/docs/widgets.md">How to make a widget</a></p>
+    </div>
+  </section>
+
+  <section class="wrap" id="install">
+    <h2>Installed in a minute</h2>
+    <p class="sub">No admin rights needed.</p>
+    <ol class="steps">
+      <li><b>Download and open the file</b><span>Lizun_x64-setup.exe from your downloads.</span></li>
+      <li><b>If Windows warns you</b><span>Click “More info”, then “Run anyway”. Why — see below.</span></li>
+      <li><b>Done</b><span>The island appears at the top of the screen. Point at it.</span></li>
+    </ol>
+  </section>
+
+  <section class="wrap" id="faq">
+    <h2>Questions</h2>
+    <div class="faq">
+      <details>
+        <summary>Is it really free?</summary>
+        <p>Yes. Lizun is free and open source: all the code is on GitHub for anyone to check.</p>
+      </details>
+      <details>
+        <summary>Why does Windows show a warning?</summary>
+        <p>The app doesn't have a paid code signature yet, so SmartScreen doesn't know it and warns just in case. Click “More info”, then “Run anyway”.</p>
+      </details>
+      <details>
+        <summary>Which computers does it run on?</summary>
+        <p>Windows 10 and Windows 11 (64-bit). A macOS version is planned. Lizun doesn't run on phones: it's an app for your computer.</p>
+      </details>
+      <details>
+        <summary>Will it get in the way?</summary>
+        <p>No. The island opens when you point at it and closes when the cursor leaves. It doesn't take the keyboard from your apps, and clicks next to it go to the windows below. You can also hide it, in Settings or from the tray icon.</p>
+      </details>
+      <details>
+        <summary>How do I uninstall it?</summary>
+        <p>Like any other app: Settings → Apps → Lizun → Uninstall.</p>
+      </details>
+      <details>
+        <summary>Is it finished?</summary>
+        <p>It's an early version: the main things work, but expect some rough edges. Found a bug or have an idea? <a href="https://github.com/StreetYo/Lizun/issues">Tell us on GitHub</a>.</p>
+      </details>
+    </div>
+  </section>
+
+  <div class="wrap final">
+    <img class="mascot" src="../assets/icon.svg" alt="" width="88" height="88">
+    <h2>Give Lizun a try</h2>
+    <div class="cta">
+      <a class="btn btn-main" href="https://github.com/StreetYo/Lizun/releases/latest/download/Lizun_x64-setup.exe"><svg><use href="#i-down"/></svg>Download for Windows</a>
+      <p class="fine">Windows 10 and 11 · free</p>
+    </div>
+  </div>
+</main>
+
+<footer class="wrap">
+  <p><a href="https://github.com/StreetYo/Lizun">GitHub</a> · <a href="https://github.com/StreetYo/Lizun/releases/latest">All downloads</a> · <a href="../" hreflang="ru" lang="ru">Русский</a></p>
+  <p>Lizun is free, open-source software (MIT / Apache-2.0). Dynamic Island is an iPhone feature; Lizun is not affiliated with Apple.</p>
+</footer>
+</body>
+</html>

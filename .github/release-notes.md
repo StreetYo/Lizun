@@ -5,6 +5,7 @@ Early prototype for Windows 10/11 (x64).
 | File | For |
 |---|---|
 | `Lizun_*_x64-setup.exe` | **Most people.** Installs for your user, no admin rights needed, adds Lizun to the Start menu and to Apps for uninstalling. |
+| `Lizun_x64-setup.exe` | The same installer under a name without the version, for links that always give the newest release. |
 | `Lizun_*_x64_en-US.msi` | Installing for all users or through Group Policy, Intune and similar tools. Needs admin rights. |
 | `Lizun_*_x64_portable.zip` | Trying Lizun without installing: unzip anywhere and run `Lizun.exe`. Settings and installed widgets are still kept in your user profile. |
 | `SHA256SUMS.txt` | Checksums to verify the downloads (`Get-FileHash <file>` in PowerShell). |

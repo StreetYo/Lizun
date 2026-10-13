@@ -3,7 +3,9 @@
 # tag to rebuild that release; files with the same names are replaced.
 #
 # Files: the NSIS installer (for most people), an MSI (managed installs), a portable zip and
-# SHA256SUMS.txt.
+# SHA256SUMS.txt. The installer is also published as Lizun_x64-setup.exe, a name without the
+# version, so releases/latest/download/Lizun_x64-setup.exe (the download button on the website)
+# always gives the newest one. That is also why releases are marked Latest, not pre-release.
 name: Release
 
 on:
@@ -62,6 +64,7 @@ jobs:
         run: |
           $out = New-Item -ItemType Directory -Force out
           Copy-Item target/release/bundle/nsis/*.exe $out
+          Copy-Item (Get-ChildItem target/release/bundle/nsis/*.exe)[0] "$out/Lizun_x64-setup.exe"
           Copy-Item target/release/bundle/msi/*.msi $out
 
           # Portable: the program with its resources next to it, laid out as the installer does.
@@ -84,9 +87,9 @@ jobs:
           $title = "Lizun $env:TAG"
           gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $env:TAG --title $title --notes-file .github/release-notes.md --prerelease
+            gh release edit $env:TAG --title $title --notes-file .github/release-notes.md --prerelease=false --latest
           } else {
-            gh release create $env:TAG --verify-tag --title $title --notes-file .github/release-notes.md --prerelease
+            gh release create $env:TAG --verify-tag --title $title --notes-file .github/release-notes.md --latest
           }
           if ($LASTEXITCODE -ne 0) { exit 1 }
           gh release upload $env:TAG (Get-ChildItem out -File).FullName --clobber
