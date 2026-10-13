@@ -37,6 +37,7 @@ let mockPreferences: unknown = {
   clipboardLifetimeHours: 24,
   clipboardLimitEnabled: true,
   clipboardLimit: 50,
+  autoUpdate: true,
 };
 
 /** Clipboard history for the preview: texts of several lengths and a picture with no file. */

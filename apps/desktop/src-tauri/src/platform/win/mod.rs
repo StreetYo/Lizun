@@ -99,3 +99,19 @@ pub fn preferred_languages() -> Vec<String> {
     // A list of tags, each ending in a null, with one more null after the last.
     tags.split(|&c| c == 0).filter(|tag| !tag.is_empty()).map(String::from_utf16_lossy).collect()
 }
+
+/// How long ago the user last touched the mouse or keyboard, in any program.
+pub fn idle_time() -> Option<std::time::Duration> {
+    use windows::Win32::System::SystemInformation::GetTickCount;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+
+    let mut info = LASTINPUTINFO { cbSize: size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+    // SAFETY: `info` is a valid, writable structure with its size filled in.
+    if !unsafe { GetLastInputInfo(&mut info) }.as_bool() {
+        return None;
+    }
+    // Both are 32-bit millisecond counters that wrap together every 49.7 days.
+    // SAFETY: no arguments.
+    let now = unsafe { GetTickCount() };
+    Some(std::time::Duration::from_millis(u64::from(now.wrapping_sub(info.dwTime))))
+}

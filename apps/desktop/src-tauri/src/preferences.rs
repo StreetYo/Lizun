@@ -111,6 +111,8 @@ pub struct Preferences {
     pub clipboard_limit: u32,
     /// Global shortcuts for the island and the music.
     pub hotkeys: crate::hotkeys::Hotkeys,
+    /// Download new versions in the background and install them while the computer is idle.
+    pub auto_update: bool,
 }
 
 impl Default for Preferences {
@@ -135,6 +137,7 @@ impl Default for Preferences {
             clipboard_limit_enabled: true,
             clipboard_limit: 50,
             hotkeys: crate::hotkeys::Hotkeys::default(),
+            auto_update: true,
         }
     }
 }
@@ -320,6 +323,7 @@ mod tests {
         assert_eq!(empty.open_delay_ms, 100);
         assert!(empty.show_on_media_change);
         assert_eq!(empty.language, "system");
+        assert!(empty.auto_update);
 
         let future: Preferences =
             serde_json::from_str(r#"{"islandVisibility":"autoHide","somethingNew":true}"#).unwrap();
@@ -347,10 +351,11 @@ mod tests {
             clipboard_limit_enabled: false,
             clipboard_limit: 200,
             hotkeys: crate::hotkeys::Hotkeys { toggle_island: None, ..Default::default() },
+            auto_update: false,
         };
         assert_eq!(
             serde_json::to_string(&hidden).unwrap(),
-            r#"{"language":"ru","islandVisibility":"hidden","miniIslandShape":"pill","floatingPanel":true,"idleEyes":false,"autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null}}"#
+            r#"{"language":"ru","islandVisibility":"hidden","miniIslandShape":"pill","floatingPanel":true,"idleEyes":false,"autoHideDelayMs":1500,"showOnMediaChange":false,"openDelayMs":400,"browserMedia":false,"browserMediaPort":7000,"widgets":[{"id":"builtin:media","enabled":false,"row":1}],"clipboardHistory":false,"clipboardText":true,"clipboardPictures":false,"clipboardFiles":true,"clipboardLifetimeHours":0,"clipboardLimitEnabled":false,"clipboardLimit":200,"hotkeys":{"toggleIsland":null,"playPause":null,"nextTrack":null,"previousTrack":null},"autoUpdate":false}"#
         );
     }
 

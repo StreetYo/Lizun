@@ -198,6 +198,7 @@
       | 'idleEyes'
       | 'clipboardHistory'
       | 'clipboardLimitEnabled'
+      | 'autoUpdate'
       | ClipboardKind,
   ): Promise<void> {
     error = null;
@@ -1300,6 +1301,24 @@
         <div class="text">
           <div class="label">Lizun {info.version}</div>
           <div class="hint">{t('settings.about.tagline')}</div>
+        </div>
+      </div>
+
+      <h2>{t('settings.about.updates')}</h2>
+      <div class="card">
+        <div class="row">
+          <div class="text">
+            <div class="label">{t('settings.about.autoUpdate')}</div>
+            <div class="hint">{t('settings.about.autoUpdateHint')}</div>
+          </div>
+          <button
+            class="switch"
+            class:on={preferences.value.autoUpdate}
+            role="switch"
+            aria-checked={preferences.value.autoUpdate}
+            aria-label={t('settings.about.autoUpdate')}
+            onclick={() => toggle('autoUpdate')}
+          ><span></span></button>
         </div>
       </div>
       <button class="danger" onclick={() => invoke('app_quit')}>{t('settings.about.quit')}</button>

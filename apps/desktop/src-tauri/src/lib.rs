@@ -12,6 +12,7 @@ mod preferences;
 mod settings;
 mod system_stats;
 mod system_tray;
+mod updater;
 mod widget_actions;
 mod widget_apps;
 mod widget_install;
@@ -29,6 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_drag::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(if cfg!(debug_assertions) {
@@ -102,6 +104,7 @@ pub fn run() {
             let preferences = preferences::current(app.handle());
             hotkeys::start(app.handle(), &preferences.hotkeys);
             browser::start(app.handle(), preferences.browser_media, preferences.browser_media_port);
+            updater::start(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())
