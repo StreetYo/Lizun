@@ -1,6 +1,9 @@
 # Publishes the landing page in site/ to GitHub Pages (https://streetyo.github.io/Lizun/) when
 # it changes on master. The page is plain HTML, so nothing is built; the videos in site/media
 # are made by scripts/site-media.py. Needs Settings > Pages > Source set to GitHub Actions.
+#
+# The site also carries updates/latest.json, the update manifest of the latest release, which
+# installed copies of Lizun read. The release workflow runs this one after each release.
 name: Pages
 
 on:
@@ -27,6 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Add the update manifest of the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p site/updates
+          if ! gh release download --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir site/updates; then
+            echo "::warning::The latest release has no latest.json, so the site offers no update"
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

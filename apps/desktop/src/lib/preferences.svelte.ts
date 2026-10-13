@@ -59,6 +59,8 @@ export interface Preferences {
   clipboardLimit: number;
   /** Global shortcuts for the island and the music. */
   hotkeys: Hotkeys;
+  /** Download new versions in the background and install them while the computer is idle. */
+  autoUpdate: boolean;
 }
 
 const DEFAULTS: Preferences = {
@@ -81,6 +83,7 @@ const DEFAULTS: Preferences = {
   clipboardLimitEnabled: true,
   clipboardLimit: 50,
   hotkeys: { toggleIsland: 'Alt+Shift+Space', playPause: null, nextTrack: null, previousTrack: null },
+  autoUpdate: true,
 };
 
 /** Preferences shared by all windows; changes made anywhere arrive through an event. */

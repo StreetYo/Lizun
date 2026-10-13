@@ -346,6 +346,9 @@
     "about": {
       "title": "About",
       "tagline": "Open-source dynamic island with installable widgets.",
+      "updates": "Updates",
+      "autoUpdate": "Update automatically",
+      "autoUpdateHint": "Lizun downloads new versions in the background and installs them while you are away from the computer.",
       "quit": "Quit Lizun"
     }
   },

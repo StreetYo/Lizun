@@ -128,3 +128,7 @@ impl SystemSampler {
         Err("system statistics are not supported on this platform yet".into())
     }
 }
+
+pub fn idle_time() -> Option<std::time::Duration> {
+    None
+}

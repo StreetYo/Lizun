@@ -34,6 +34,7 @@ chrono-tz = "0.10"
 rrule = "0.14"
 png = "0.18"
 sha2 = "0.10"
+tauri-plugin-updater = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-future = "0.3"

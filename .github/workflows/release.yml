@@ -6,6 +6,11 @@
 # SHA256SUMS.txt. The installer is also published as Lizun_x64-setup.exe, a name without the
 # version, so releases/latest/download/Lizun_x64-setup.exe (the download button on the website)
 # always gives the newest one. That is also why releases are marked Latest, not pre-release.
+#
+# Installed copies update themselves from latest.json, which this workflow attaches to the
+# release and the Pages workflow, started at the end, puts on the website. The installer is
+# signed for the updater with the TAURI_SIGNING_PRIVATE_KEY secret (made by `tauri signer
+# generate`; its public half is in tauri.conf.json). Without that key no update can be made.
 name: Release
 
 on:
@@ -19,6 +24,8 @@ on:
 
 permissions:
   contents: write
+  # To start the Pages workflow, which takes latest.json to the website.
+  actions: write
 
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
@@ -58,7 +65,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm --filter @lizun/desktop tauri build --bundles nsis,msi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        # The release config adds the updater's signatures, which need the key; local builds go without.
+        run: pnpm --filter @lizun/desktop tauri build --bundles nsis,msi --config src-tauri/tauri.release.conf.json
 
       - name: Collect the files
         run: |
@@ -66,6 +77,19 @@ jobs:
           Copy-Item target/release/bundle/nsis/*.exe $out
           Copy-Item (Get-ChildItem target/release/bundle/nsis/*.exe)[0] "$out/Lizun_x64-setup.exe"
           Copy-Item target/release/bundle/msi/*.msi $out
+
+          # The update manifest. Only the NSIS installer updates itself: see src-tauri/src/updater.rs.
+          $setup = (Get-ChildItem target/release/bundle/nsis/*.exe)[0]
+          $platform = @{
+            signature = (Get-Content "$($setup.FullName).sig" -Raw).Trim()
+            url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/$($setup.Name)"
+          }
+          $manifest = [ordered]@{
+            version = $env:VERSION
+            pub_date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            platforms = @{ 'windows-x86_64-nsis' = $platform; 'windows-x86_64' = $platform }
+          }
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content "$out/latest.json"
 
           # Portable: the program with its resources next to it, laid out as the installer does.
           $portable = New-Item -ItemType Directory -Force portable/Lizun
@@ -93,3 +117,9 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { exit 1 }
           gh release upload $env:TAG (Get-ChildItem out -File).FullName --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Put the update manifest on the website
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref master
