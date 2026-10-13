@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lizun — Dynamic Island для Windows, бесплатно</title>
+<meta name="description" content="Чёрный остров вверху экрана, как на iPhone, только для компьютера с Windows: музыка из любого приложения, лоток для файлов, история буфера обмена, задачи и виджеты. Бесплатно.">
+<meta name="theme-color" content="#07090f">
+<link rel="canonical" href="https://streetyo.github.io/Lizun/">
+<link rel="alternate" hreflang="ru" href="https://streetyo.github.io/Lizun/">
+<link rel="alternate" hreflang="en" href="https://streetyo.github.io/Lizun/en/">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lizun — Dynamic Island для Windows">
+<meta property="og:description" content="Бесплатно. Музыка, файлы, буфер обмена, задачи и виджеты в острове вверху экрана.">
+<meta property="og:url" content="https://streetyo.github.io/Lizun/">
+<meta property="og:image" content="https://streetyo.github.io/Lizun/media/og-ru.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ru_RU">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" as="image" href="media/hero.jpg">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/main.js" defer></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M11 3h2v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6zM4 19h16v2H4z"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.7.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9V21c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></symbol>
+  <symbol id="i-pc" viewBox="0 0 24 24"><path d="M3 4h18a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7v2h3v2H7v-2h3v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v9h16V6z"/></symbol>
+</svg>
+
+<header class="wrap top">
+  <a class="brand" href="./"><img src="assets/icon.svg" alt="" width="32" height="32">Lizun</a>
+  <div class="pill" aria-hidden="true"><span class="eye"></span><span class="eye"></span></div>
+  <a class="lang" href="en/" hreflang="en" lang="en">EN</a>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <span class="badge"><svg><use href="#i-pc"/></svg>Программа для компьютера с Windows 10 и 11</span>
+    <h1><span class="grad">Dynamic Island</span><br>для Windows</h1>
+    <p class="lead">Чёрный остров вверху экрана, как на iPhone. Наведите мышку — и под рукой музыка, файлы, всё скопированное и список дел. Бесплатно.</p>
+
+    <div class="cta">
+      <a class="btn btn-main" href="https://github.com/StreetYo/Lizun/releases/latest/download/Lizun_x64-setup.exe"><svg><use href="#i-down"/></svg>Скачать для Windows</a>
+      <p class="fine">Бесплатно · 3 МБ · без прав администратора</p>
+      <p class="links"><a href="https://github.com/StreetYo/Lizun"><svg><use href="#i-gh"/></svg>Открытый код на GitHub</a><a href="https://github.com/StreetYo/Lizun/releases/latest">Другие версии</a></p>
+    </div>
+
+    <div class="notice" id="phone">
+      <p><b>Вы с телефона.</b> Lizun работает на компьютере с Windows — отправьте ссылку себе и откройте её на ПК.</p>
+      <div class="row">
+        <button class="btn btn-main" type="button" data-share="Lizun — Dynamic Island для Windows. Открыть на компьютере:">Отправить ссылку</button>
+        <button class="btn btn-ghost" type="button" data-copy="Ссылка скопирована">Скопировать</button>
+      </div>
+      <p class="done" aria-live="polite"></p>
+    </div>
+    <div class="notice" id="other">
+      <p><b>Lizun пока только для Windows.</b> Версия для macOS в планах. Если Windows есть на другом компьютере — отправьте ссылку туда.</p>
+      <div class="row">
+        <button class="btn btn-ghost" type="button" data-copy="Ссылка скопирована">Скопировать ссылку</button>
+      </div>
+      <p class="done" aria-live="polite"></p>
+    </div>
+
+    <div class="monitor">
+      <div class="screen">
+        <video data-auto muted loop playsinline preload="metadata" poster="media/hero.jpg" aria-label="Остров Lizun вверху экрана: музыка, задачи, лоток с файлами и буфер обмена">
+          <source src="media/hero.mp4" type="video/mp4">
+        </video>
+        <div class="taskbar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="stand" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <section class="wrap" id="features">
+    <h2>Всё нужное — в одном острове</h2>
+    <p class="sub">Остров не мешает работе: он не перехватывает клавиатуру, а клики мимо него проходят в ваши окна.</p>
+    <div class="features">
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="media/music.jpg" aria-label="Музыка в острове"><source src="media/music.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>Музыка из любого приложения</h3>
+          <p>Spotify, музыка в браузере, Telegram — всё, что играет на компьютере, видно в острове: обложка, название, пауза и переключение треков.</p>
+        </div>
+      </article>
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="media/tray.jpg" aria-label="Файлы перетаскивают в лоток острова"><source src="media/tray.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>Лоток для файлов</h3>
+          <p>Перетащите файлы на остров — они подождут там. Потом вытащите их в любую папку, письмо или мессенджер.</p>
+        </div>
+      </article>
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="media/clipboard.jpg" aria-label="История буфера обмена"><source src="media/clipboard.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>Всё, что копировали, — под рукой</h3>
+          <p>Тексты, картинки и файлы, которые вы копировали, собраны во вкладке «Буфер». Нажмите — и снова скопировано. Пароли, которые программы помечают как секретные, не сохраняются.</p>
+        </div>
+      </article>
+      <article class="feature">
+        <video data-auto muted loop playsinline preload="none" poster="media/tasks.jpg" aria-label="Список задач в острове"><source src="media/tasks.mp4" type="video/mp4"></video>
+        <div class="txt">
+          <h3>Задачи прямо в острове</h3>
+          <p>Короткий список дел всегда сверху экрана. А закрытый остров подскажет следующую задачу.</p>
+        </div>
+      </article>
+    </div>
+    <ul class="extras">
+      <li>📅 Календарь Google, Outlook или iCloud</li>
+      <li>⌨️ Открыть остров сочетанием клавиш</li>
+      <li>👀 Глазки, когда показывать нечего</li>
+      <li>🧩 Виджеты можно переставлять и прятать</li>
+      <li>🇷🇺 Русский и английский</li>
+    </ul>
+  </section>
+
+  <section class="wrap" id="widgets">
+    <h2>Виджеты на любой вкус</h2>
+    <p class="sub">Добавьте в остров то, что нужно именно вам. Виджет ставится в пару кликов, а перед установкой Lizun покажет, к чему ему нужен доступ.</p>
+    <div class="widgets">
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-weather.jpg" aria-label="Виджет погоды"><source src="media/w-weather.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Погода</h3><p>Сейчас и на ближайшие часы в вашем городе.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-pomodoro.jpg" aria-label="Виджет помодоро"><source src="media/w-pomodoro.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Помодоро</h3><p>Таймер работы и отдыха. Обратный отсчёт виден даже в закрытом острове.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-lyrics.jpg" aria-label="Виджет текста песни"><source src="media/w-lyrics.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Текст песни</h3><p>Слова играющего трека, строчка за строчкой в такт музыке.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-habits.jpg" aria-label="Виджет привычек"><source src="media/w-habits.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Привычки</h3><p>Отмечайте привычки каждый день и следите, сколько дней подряд держитесь.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-anki.jpg" aria-label="Виджет Anki"><source src="media/w-anki.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Anki</h3><p>Карточки для запоминания: ваши колоды Anki или колоды прямо в виджете.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-notepad.jpg" aria-label="Виджет блокнота"><source src="media/w-notepad.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Блокнот</h3><p>Заметка, которую можно писать прямо в острове.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-system-monitor.jpg" aria-label="Виджет загрузки компьютера"><source src="media/w-system-monitor.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>Загрузка компьютера</h3><p>Процессор, видеокарта, память, диск, сеть и батарея.</p></div>
+      </article>
+      <article class="widget">
+        <video data-auto muted loop playsinline preload="none" poster="media/w-ip-location.jpg" aria-label="Виджет IP и VPN"><source src="media/w-ip-location.mp4" type="video/mp4"></video>
+        <div class="txt"><h3>IP и VPN</h3><p>Где вас видит интернет: IP, страна и город. Удобно проверить, включён ли VPN.</p></div>
+      </article>
+    </div>
+    <div class="own">
+      <h3>Не нашли свой? Сделайте!</h3>
+      <p>Виджеты для Lizun может делать кто угодно, и их становится больше. Придумали свой — сделайте его и поделитесь с остальными.</p>
+      <p class="fine"><a href="https://github.com/StreetYo/Lizun/blob/master/docs/widget-catalog.md">Все виджеты</a> · <a href="https://github.com/StreetYo/Lizun/blob/master/docs/widgets.md">Как сделать виджет</a></p>
+    </div>
+  </section>
+
+  <section class="wrap" id="install">
+    <h2>Установка за минуту</h2>
+    <p class="sub">Права администратора не нужны.</p>
+    <ol class="steps">
+      <li><b>Скачайте и откройте файл</b><span>Lizun_x64-setup.exe из загрузок.</span></li>
+      <li><b>Если Windows предупредит</b><span>Нажмите «Подробнее», затем «Выполнить в любом случае». Почему так — ниже.</span></li>
+      <li><b>Готово</b><span>Остров появится вверху экрана. Наведите на него мышку.</span></li>
+    </ol>
+  </section>
+
+  <section class="wrap" id="faq">
+    <h2>Вопросы</h2>
+    <div class="faq">
+      <details>
+        <summary>Это правда бесплатно?</summary>
+        <p>Да. Lizun — бесплатная программа с открытым исходным кодом: весь код лежит на GitHub, его может проверить кто угодно.</p>
+      </details>
+      <details>
+        <summary>Почему Windows показывает предупреждение?</summary>
+        <p>У программы пока нет платной цифровой подписи, поэтому фильтр SmartScreen не знает её и на всякий случай предупреждает. Нажмите «Подробнее», затем «Выполнить в любом случае».</p>
+      </details>
+      <details>
+        <summary>На каких компьютерах работает?</summary>
+        <p>На Windows 10 и Windows 11 (64-бит). Версия для macOS в планах. На телефонах Lizun не работает — это программа для компьютера.</p>
+      </details>
+      <details>
+        <summary>Он не будет мешать?</summary>
+        <p>Нет. Остров открывается при наведении и закрывается, когда мышка уходит. Он не забирает клавиатуру у ваших программ, а клики мимо острова проходят в окна под ним. Его можно и спрятать: в настройках или через значок в трее.</p>
+      </details>
+      <details>
+        <summary>Как удалить?</summary>
+        <p>Как обычную программу: Параметры → Приложения → Lizun → Удалить.</p>
+      </details>
+      <details>
+        <summary>Это готовая программа?</summary>
+        <p>Это ранняя версия: основное работает, но возможны шероховатости. Нашли ошибку или есть идея — <a href="https://github.com/StreetYo/Lizun/issues">напишите на GitHub</a>.</p>
+      </details>
+    </div>
+  </section>
+
+  <div class="wrap final">
+    <img class="mascot" src="assets/icon.svg" alt="" width="88" height="88">
+    <h2>Попробуйте Lizun</h2>
+    <div class="cta">
+      <a class="btn btn-main" href="https://github.com/StreetYo/Lizun/releases/latest/download/Lizun_x64-setup.exe"><svg><use href="#i-down"/></svg>Скачать для Windows</a>
+      <p class="fine">Windows 10 и 11 · бесплатно</p>
+    </div>
+  </div>
+</main>
+
+<footer class="wrap">
+  <p><a href="https://github.com/StreetYo/Lizun">GitHub</a> · <a href="https://github.com/StreetYo/Lizun/releases/latest">Все загрузки</a> · <a href="en/" hreflang="en" lang="en">English</a></p>
+  <p>Lizun — бесплатная программа с открытым кодом (MIT / Apache-2.0). Dynamic Island — функция iPhone; Lizun не связан с Apple.</p>
+</footer>
+</body>
+</html>

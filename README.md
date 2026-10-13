@@ -10,7 +10,7 @@ list, and widgets anyone can write and install.
 
 ## Download
 
-Download Lizun for Windows 10/11 from the [latest release](https://github.com/StreetYo/Lizun/releases/latest):
+Download Lizun for Windows 10/11 from [the website](https://streetyo.github.io/Lizun/en/) or the [latest release](https://github.com/StreetYo/Lizun/releases/latest):
 `Lizun_*_x64-setup.exe` is the installer for most people; an MSI for managed installs and a
 portable zip are there too. The files are not code-signed yet, so SmartScreen may warn about
 them: click **More info**, then **Run anyway**.
@@ -94,6 +94,7 @@ Texts left out of a translation are shown in English. How it works: [ADR 0007](d
 | `packages/widget-sdk` | SDK that widgets import |
 | `widgets/hello` | Example third-party widget |
 | `docs/` | Decisions, specs and test reports |
+| `site/` | The website ([streetyo.github.io/Lizun](https://streetyo.github.io/Lizun/)), published by `.github/workflows/pages.yml`; its videos are made by `scripts/site-media.py` |
 
 ## License
 
