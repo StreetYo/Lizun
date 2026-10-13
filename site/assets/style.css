@@ -28,7 +28,8 @@ body {
 a { color: var(--cyan); }
 img, video { display: block; max-width: 100%; }
 
-.wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 16px; }
+/* Only the sides: sections, the hero and the footer set their own space above and below. */
+.wrap { width: 100%; max-width: var(--wrap); margin-inline: auto; padding-inline: 16px; }
 
 /* Header with a live island in the middle, like the app at the top of the screen. */
 .top {
@@ -88,17 +89,17 @@ img, video { display: block; max-width: 100%; }
 }
 
 /* Hero */
-.hero { text-align: center; padding: 40px 0 24px; }
+.hero { text-align: center; padding-block: 40px 24px; }
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--muted);
   border: 1px solid var(--line);
   background: var(--bg-2);
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 6px 12px;
 }
 .badge svg { width: 15px; height: 15px; fill: var(--cyan); }
 h1 {
@@ -161,7 +162,7 @@ h1 .grad {
   display: none;
   max-width: 420px;
   margin: 18px auto 0;
-  padding: 16px 18px;
+  padding: 16px;
   text-align: left;
   background: var(--card);
   border: 1px solid rgba(92, 194, 255, 0.3);
@@ -169,8 +170,8 @@ h1 .grad {
 }
 .notice.on { display: block; }
 .notice p { margin: 0 0 12px; font-size: 16px; }
-.notice .row { display: flex; gap: 10px; flex-wrap: wrap; }
-.notice .btn { flex: 1 1 0; min-height: 46px; font-size: 16px; padding: 0 14px; white-space: nowrap; box-shadow: none; }
+.notice .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.notice .btn { flex: 1 1 0; min-height: 46px; font-size: 16px; padding: 0 12px; white-space: nowrap; box-shadow: none; }
 .notice .done { color: var(--cyan); font-size: 14px; margin: 10px 0 0; min-height: 1em; }
 
 /* A monitor with the island at the top of its screen. */
@@ -224,7 +225,7 @@ h1 .grad {
 }
 
 /* Sections */
-section { padding: 56px 0 8px; }
+section { padding-block: 72px 0; }
 h2 {
   font-size: clamp(28px, 7vw, 42px);
   line-height: 1.1;
@@ -339,12 +340,12 @@ h2 {
 .faq details[open] summary::after { content: "−"; }
 .faq details p { margin: 0 0 16px; color: var(--muted); }
 
-.final { text-align: center; padding: 64px 0 24px; }
+.final { text-align: center; padding-block: 88px 24px; }
 .final .mascot { width: 88px; height: 88px; margin: 0 auto 8px; }
 
 footer {
   margin-top: 40px;
-  padding: 28px 0 40px;
+  padding-block: 28px 40px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 14px;
@@ -364,6 +365,7 @@ footer a { color: var(--muted); }
 @media (min-width: 900px) {
   body { font-size: 18px; }
   .hero { padding-top: 64px; }
+  section { padding-top: 104px; }
   .features { grid-template-columns: 1fr 1fr; gap: 24px; }
   .widgets { grid-template-columns: repeat(4, 1fr); }
   .widget p { font-size: 14px; }
