@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lizun — конфиденциальность расширения для браузера</title>
+<meta name="description" content="Какие данные видит расширение Lizun для браузера и куда они уходят.">
+<meta name="theme-color" content="#07090f">
+<link rel="canonical" href="https://streetyo.github.io/Lizun/privacy/">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  .doc { max-width: 760px; padding-top: 24px; padding-bottom: 64px; }
+  .doc h1 { font-size: 34px; line-height: 1.15; margin: 0 0 8px; }
+  .doc h2 { font-size: 22px; margin: 36px 0 8px; }
+  .doc p, .doc li { line-height: 1.6; }
+  .doc ul { padding-left: 22px; }
+  .doc .muted { opacity: .7; }
+  .doc hr { border: 0; border-top: 1px solid rgba(255, 255, 255, .12); margin: 56px 0; }
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="../"><img src="../assets/icon.svg" alt="" width="32" height="32">Lizun</a>
+  <a class="lang" href="#en" lang="en">EN</a>
+</header>
+
+<main class="wrap doc">
+  <h1>Конфиденциальность расширения Lizun для браузера</h1>
+  <p class="muted">Обновлено 14 октября 2026 г.</p>
+
+  <p>Расширение Lizun показывает музыку и видео, которые играют во вкладках браузера, на острове программы Lizun на вашем компьютере. Всё, что оно узнаёт, остаётся на этом компьютере.</p>
+
+  <h2>Что расширение видит</h2>
+  <ul>
+    <li>Что играет во вкладке: название, исполнитель, альбом, обложка, длительность, позиция и играет ли сейчас. Если сайт не сообщает название трека, берётся заголовок вкладки.</li>
+    <li>Адрес сайта вкладки (например, music.yandex.ru), чтобы подписать плеер на острове.</li>
+  </ul>
+  <p>Остальное содержимое страниц, введённый текст, пароли, история и файлы cookie не читаются.</p>
+
+  <h2>Куда это уходит</h2>
+  <p>Только в программу Lizun на этом же компьютере, через локальное соединение по адресу 127.0.0.1. Расширение ничего не отправляет разработчику или третьим лицам, не использует аналитику и рекламу и ничего не продаёт.</p>
+  <p>Чтобы показать обложку, расширение скачивает её по тому же адресу, по которому её загружает сам сайт, без файлов cookie.</p>
+
+  <h2>Что хранится</h2>
+  <p>Только номер порта для подключения к Lizun, в настройках браузера. Сведения о том, что играет, не сохраняются: они пропадают, когда вкладка закрывается или музыка останавливается.</p>
+
+  <h2>Управление</h2>
+  <p>Кнопки на острове (пауза, следующий трек, перемотка) передаются во вкладку как нажатие медиаклавиши. Расширение ничего не делает на сайтах само по себе.</p>
+
+  <h2>Вопросы</h2>
+  <p>Пишите в <a href="https://github.com/StreetYo/Lizun/issues">GitHub Issues</a>.</p>
+
+  <hr>
+
+  <section id="en" lang="en">
+    <h1>Lizun browser extension privacy policy</h1>
+    <p class="muted">Updated October 14, 2026</p>
+
+    <p>The Lizun extension shows music and videos playing in your browser tabs on the island of the Lizun app on your computer. Everything it learns stays on this computer.</p>
+
+    <h2>What the extension sees</h2>
+    <ul>
+      <li>What is playing in a tab: title, artist, album, cover, duration, position and whether it is playing. If the site gives no track title, the tab's title is used.</li>
+      <li>The tab's site address (for example, music.yandex.ru), to label the player on the island.</li>
+    </ul>
+    <p>Other page content, typed text, passwords, history and cookies are not read.</p>
+
+    <h2>Where it goes</h2>
+    <p>Only to the Lizun app on the same computer, over a local connection to 127.0.0.1. The extension sends nothing to the developer or third parties, uses no analytics or ads, and sells nothing.</p>
+    <p>To show a cover, the extension downloads it from the same address the site loads it from, without cookies.</p>
+
+    <h2>What is stored</h2>
+    <p>Only the port number for connecting to Lizun, in the browser's extension storage. What is playing is not saved: it is gone once the tab closes or playback stops.</p>
+
+    <h2>Controls</h2>
+    <p>The island's buttons (pause, next track, seeking) reach the tab the way a media key would. The extension does nothing on sites by itself.</p>
+
+    <h2>Questions</h2>
+    <p>Open an issue on <a href="https://github.com/StreetYo/Lizun/issues">GitHub</a>.</p>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p><a href="../">Lizun</a> · <a href="https://github.com/StreetYo/Lizun">GitHub</a></p>
+</footer>
+</body>
+</html>
