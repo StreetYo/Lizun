@@ -158,6 +158,7 @@
       "reset": "Could not reset the settings: {error}",
       "remove": "Could not remove {name}: {error}",
       "openFolder": "Could not open the folder: {error}",
+      "openLink": "Could not open the link: {error}",
       "port": "The port must be a number from {min} to {max}.",
       "limit": "The limit must be a number from {min} to {max}."
     },
@@ -304,7 +305,7 @@
       "connected": "Connected: {browsers}",
       "waiting": "Waiting for the extension on port {port}.",
       "setup": "Setup",
-      "installExtension": "Install the {name} browser extension for Chrome, Yandex Browser, Edge, Opera or Firefox.",
+      "installExtension": "Install the {name} extension from the Chrome Web Store. It works in Chrome, Yandex Browser, Edge and Opera.",
       "reloadTabs": "Reload the tabs that were open before the extension was installed.",
       "samePort": "If you changed the port, enter {port} in the extension's popup as well."
     },

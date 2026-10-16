@@ -29,7 +29,10 @@ them: click **More info**, then **Run anyway**.
 - Calendar: the week around today with your events, from the iCal link of a Google, Outlook or
   iCloud calendar or from an .ics file (Settings > Widgets > Calendar), recurring events included.
 - Now playing for any app in the Windows media flyout (Spotify, browsers, Telegram, ...), with
-  play/pause/next/previous.
+  play/pause/next/previous. Browsers that keep their media out of the flyout, such as Yandex
+  Browser, show up through the
+  [Lizun extension](https://chromewebstore.google.com/detail/lizun/moedhfljmknmcjhaebhghgmdibaajdhi)
+  (see [docs/browser-protocol.md](docs/browser-protocol.md)).
 - File tray: drag files from Explorer onto the island, drag them back out into any app.
 - Clipboard history: text, pictures and files you copy, in the island's Clipboard tab; click
   one to copy it again. How long entries stay and how many are kept (or no limit) are set in

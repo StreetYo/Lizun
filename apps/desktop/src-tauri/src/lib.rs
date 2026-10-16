@@ -54,6 +54,7 @@ pub fn run() {
             media::media_players,
             media::media_select,
             browser::browser_media_status,
+            browser::browser_media_open_store,
             calendar::calendar_snapshot,
             clipboard::clipboard_history,
             clipboard::clipboard_copy,

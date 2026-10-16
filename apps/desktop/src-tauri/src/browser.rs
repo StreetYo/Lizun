@@ -28,6 +28,8 @@ use crate::media::{Artwork, MediaCommand, NowPlaying, Player, Source};
 pub const EVENT_STATUS: &str = "browser-media://status";
 pub const DEFAULT_PORT: u16 = 6869;
 pub const PROTOCOL: u32 = 1;
+/// The extension in the Chrome Web Store, for Chrome, Yandex Browser, Edge and Opera.
+const STORE_URL: &str = "https://chromewebstore.google.com/detail/lizun/moedhfljmknmcjhaebhghgmdibaajdhi";
 
 /// How often binding is retried while the port is taken.
 const BIND_RETRY: Duration = Duration::from_secs(5);
@@ -217,6 +219,12 @@ pub fn control(app: &AppHandle, player_id: &str, command: MediaCommand, playing:
 #[tauri::command]
 pub fn browser_media_status(server: State<'_, Arc<BrowserMedia>>) -> Status {
     server.status()
+}
+
+/// Opens the extension's page in the Chrome Web Store.
+#[tauri::command]
+pub fn browser_media_open_store() -> Result<(), String> {
+    crate::platform::open_url(STORE_URL)
 }
 
 impl BrowserMedia {

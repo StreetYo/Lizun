@@ -528,6 +528,11 @@
     error = null;
     invoke('widgets_open_folder').catch((err) => (error = t('settings.errors.openFolder', { error: String(err) })));
   }
+
+  function openExtensionStore(): void {
+    error = null;
+    invoke('browser_media_open_store').catch((err) => (error = t('settings.errors.openLink', { error: String(err) })));
+  }
 </script>
 
 <!-- The island with its eyes, drawn like app-icon.svg. -->
@@ -1162,7 +1167,7 @@
         <h2>{t('settings.media.setup')}</h2>
         <div class="card">
           <ol class="steps">
-            <li>{installBefore}<b>Lizun</b>{installAfter}</li>
+            <li>{installBefore}<button class="link" onclick={openExtensionStore}>Lizun</button>{installAfter}</li>
             <li>{t('settings.media.reloadTabs')}</li>
             <li>{portBefore}<b>{preferences.value.browserMediaPort}</b>{portAfter}</li>
           </ol>
@@ -1791,6 +1796,11 @@
 
   .steps b {
     color: var(--text);
+    font-weight: 600;
+  }
+
+  .steps .link {
+    font-size: inherit;
     font-weight: 600;
   }
 
