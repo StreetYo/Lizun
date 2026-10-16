@@ -2,8 +2,11 @@
 
 Some browsers, Yandex Browser among them, do not publish their media to the Windows media
 controls, so Lizun cannot see it through the system. The Lizun browser extension
-(separate repository, `lizun-browser-extension`) watches media in every tab and reports it to
-the app over a WebSocket. This document is the contract between the two.
+([Chrome Web Store](https://chromewebstore.google.com/detail/lizun/moedhfljmknmcjhaebhghgmdibaajdhi);
+source in the separate repository
+[lizun-browser-extension](https://github.com/StreetYo/lizun-browser-extension)) watches media in
+every tab and reports it to the app over a WebSocket. This document is the contract between the
+two.
 
 ## Connection
 
