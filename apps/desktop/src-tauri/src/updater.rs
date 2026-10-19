@@ -90,7 +90,7 @@ async fn fetch(app: &AppHandle) -> tauri_plugin_updater::Result<Option<(Update, 
         .updater_builder()
         // In place of the plugin's own hook, which skips the RunEvent::Exit handler in lib.rs.
         .on_before_exit(move || {
-            crate::widget_apps::close_started(&closing);
+            crate::widget_apps::close_background(&closing);
             closing.cleanup_before_exit();
         })
         .build()?;

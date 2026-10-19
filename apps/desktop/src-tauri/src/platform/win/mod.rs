@@ -8,7 +8,7 @@ mod window;
 
 use std::path::Path;
 
-pub use apps::{close_app_if_hidden, find_process, show_app, start_app};
+pub use apps::{app_shown, close_app_if_hidden, find_process, hide_app, show_app, start_app};
 pub use clipboard::{
     clipboard_sequence, read_clipboard, write_clipboard_files, write_clipboard_picture, write_clipboard_text,
 };

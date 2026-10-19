@@ -409,6 +409,9 @@ export const network = {
 /** What `apps.start` did: started the program, found it running, or found it nowhere. */
 export type AppStart = 'started' | 'running' | 'notFound';
 
+/** Whether the program runs, and whether its window is shown or in the background. */
+export type AppState = 'notRunning' | 'hidden' | 'shown';
+
 /**
  * Programs on this computer the widget works with, listed in the manifest's `apps` with the
  * paths they may be installed at. The widget names them by id; the user sees them before
@@ -418,12 +421,23 @@ export const apps = {
   /**
    * Starts the program unless it is already running. With `hidden`, it starts in the
    * background: its windows are hidden while it starts up, and Lizun asks it to close when Lizun
-   * quits if it was never shown.
+   * quits if it is still in the background.
    */
   start: (id: string, options: { hidden?: boolean } = {}) =>
     call<AppStart>('apps.start', { id, hidden: options.hidden === true }),
-  /** Shows the running program's windows and brings it to the front; false if there is none. */
+  /**
+   * Shows the running program's windows and brings it to the front; false if there is none.
+   * Only from a click on the widget.
+   */
   show: (id: string) => call<boolean>('apps.show', { id }),
+  /**
+   * Puts the running program in the background: hides its windows, so it has no taskbar button,
+   * until `show` or until the user starts it again from its shortcut; false if there is no
+   * window. Only from a click on the widget.
+   */
+  hide: (id: string) => call<boolean>('apps.hide', { id }),
+  /** Whether the program runs, and whether its window is shown. */
+  state: (id: string) => call<AppState>('apps.state', { id }),
 };
 
 /** Development helper: the report shows up in the island's console. */

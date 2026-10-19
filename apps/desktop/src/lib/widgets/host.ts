@@ -148,8 +148,21 @@ const METHODS: Record<string, { permission?: string; handler: Handler }> = {
     handler: ({ widget }, params) =>
       invoke('widget_app_start', { widgetId: widget.id, appId: String(params.id), hidden: params.hidden === true }),
   },
+  // Showing and hiding act outside the widget, so only for a click on it (see `mayAct`).
   'apps.show': {
-    handler: ({ widget }, params) => invoke('widget_app_show', { widgetId: widget.id, appId: String(params.id) }),
+    handler: (frame, params) => {
+      if (!mayAct(frame)) throw new Refusal('not_allowed', 'a program is shown only from a click on the open widget');
+      return invoke('widget_app_show', { widgetId: frame.widget.id, appId: String(params.id) });
+    },
+  },
+  'apps.hide': {
+    handler: (frame, params) => {
+      if (!mayAct(frame)) throw new Refusal('not_allowed', 'a program is hidden only from a click on the open widget');
+      return invoke('widget_app_hide', { widgetId: frame.widget.id, appId: String(params.id) });
+    },
+  },
+  'apps.state': {
+    handler: ({ widget }, params) => invoke('widget_app_state', { widgetId: widget.id, appId: String(params.id) }),
   },
   'activity.set': {
     permission: 'activity',

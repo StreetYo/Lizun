@@ -203,14 +203,18 @@ import { apps } from '/__sdk/index.js';
 
 const result = await apps.start('anki', { hidden: true }); // 'started', 'running' or 'notFound'
 await apps.show('anki'); // shows its window and brings it to the front; false if there is none
+await apps.hide('anki'); // puts it back in the background; false if it has no window
+await apps.state('anki'); // 'notRunning', 'hidden' or 'shown'
 ```
 
 - A program that is already running is not started again.
 - With `hidden`, it starts in the background: its windows are hidden while it starts up (the
-  first 30 seconds), so it has no window or taskbar button. Opening it by hand later, or
-  `apps.show`, shows it.
-- When Lizun quits, a program it started in the background that was never shown is asked to
-  close, as if its close button had been pressed.
+  first 30 seconds), so it has no window or taskbar button.
+- `apps.hide` hides its windows, dialogs included, and `apps.show` brings them back. Both work
+  only from a click on the open widget.
+- While the program is in the background, starting it again from its shortcut shows it.
+- When Lizun quits, a program still in the background (started or put there by Lizun) is asked
+  to close, as if its close button had been pressed.
 - Windows only for now; elsewhere `apps.start` rejects.
 
 Start a program when the user needs it, for example when the widget loads and is set to use it,

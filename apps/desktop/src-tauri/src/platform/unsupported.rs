@@ -101,6 +101,14 @@ pub fn show_app(_pid: u32) -> bool {
     false
 }
 
+pub fn hide_app(_pid: u32, _exe: &std::path::Path) -> bool {
+    false
+}
+
+pub fn app_shown(_pid: u32) -> bool {
+    false
+}
+
 pub fn close_app_if_hidden(_pid: u32) -> bool {
     false
 }

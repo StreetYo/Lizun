@@ -42,7 +42,7 @@ pub fn run() {
         )
         .register_uri_scheme_protocol(widgets::SCHEME, widgets::serve)
         .manage(widget_storage::Writes::default())
-        .manage(widget_apps::Started::default())
+        .manage(widget_apps::Background::default())
         .manage(system_stats::Sampler::default())
         .invoke_handler(tauri::generate_handler![
             island::island_set_hit_region,
@@ -77,6 +77,8 @@ pub fn run() {
             system_stats::widget_system_stats,
             widget_apps::widget_app_start,
             widget_apps::widget_app_show,
+            widget_apps::widget_app_hide,
+            widget_apps::widget_app_state,
             widget_storage::widget_storage_get,
             widget_storage::widget_storage_set,
             widget_storage::widget_storage_remove,
@@ -112,7 +114,7 @@ pub fn run() {
         .expect("error while building Lizun")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
-                widget_apps::close_started(app);
+                widget_apps::close_background(app);
             }
         });
 }

@@ -51,3 +51,21 @@ should not get a general way to do so.
 - Stopping a program while Lizun runs: closing it is the user's choice, in the program.
 - A path the user picks: a widget setting cannot ask for files (ADR 0002), and the common
   install folders cover Anki.
+
+## Revised 2026-10-19: back to the background, and the shortcut
+
+Anki started in the background could not be opened from its own shortcut. Anki hands a second
+start to the running instance and asks it to raise its window, but Qt does not learn of a window
+hidden from outside and takes it for shown, so the raise did nothing (minimizing first does not
+help either). Starting Anki minimized instead was tried and dropped: it keeps a taskbar button.
+
+- **`apps.hide(id)`** puts a running program back in the background: its main windows and the
+  windows they own (an open dialog) are hidden; `apps.show` brings back both. Both act outside
+  the widget, so they work only from a click on the open widget. **`apps.state(id)`** answers
+  `notRunning`, `hidden` or `shown`, so the widget's button can say which it will do.
+- **While a program is in the background**, Lizun checks five times a second for another
+  process from the same file and shows the program when one appears: that is its shortcut being
+  used. Anki's second instance lives about half a second. Only processes with the program's file
+  name are opened, so a check costs a process snapshot.
+- **When Lizun quits**, a program it started in or put in the background is closed as before if
+  it is still there.

@@ -5,8 +5,9 @@
 //! lists the paths it may be installed at; the user sees the program before installing the
 //! widget. It is started without arguments. In the background, its windows are hidden as they
 //! appear for a short while, so it runs without a window until the widget or the user shows it;
-//! when Lizun quits, a program still in the background is asked to close. Why it works this way
-//! is in docs/adr/0011-widgets-starting-apps.md.
+//! the widget can also put it back in the background (`apps.hide`). While it is there, starting
+//! it again from its shortcut shows it. When Lizun quits, a program still in the background is
+//! asked to close. Why it works this way is in docs/adr/0011-widgets-starting-apps.md.
 
 use std::path::{Component, PathBuf};
 use std::sync::Mutex;
@@ -16,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
 
 /// How long the windows of a program started in the background are hidden as they appear: long
-/// enough for its start-up, short enough that opening it by hand later shows it as usual.
+/// enough for its start-up, short enough that windows it opens later show as usual.
 const HIDE_FOR: Duration = Duration::from_secs(30);
 const MAX_APPS: usize = 4;
 const MAX_PATHS: usize = 8;
@@ -42,9 +43,18 @@ pub struct AppSpec {
     pub paths: Vec<String>,
 }
 
-/// Programs started in the background in this session, by process id.
+/// Programs Lizun started in or put in the background in this session, by process id.
 #[derive(Default)]
-pub struct Started(Mutex<Vec<u32>>);
+pub struct Background(Mutex<Vec<u32>>);
+
+impl Background {
+    fn add(&self, pid: u32) {
+        let mut pids = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if !pids.contains(&pid) {
+            pids.push(pid);
+        }
+    }
+}
 
 pub fn validate(apps: &[AppSpec]) -> Result<(), String> {
     if apps.len() > MAX_APPS {
@@ -144,7 +154,7 @@ pub async fn widget_app_start(app: AppHandle, widget_id: String, app_id: String,
         log::info!("starting {} for {widget_id}{}", exe.display(), if hidden { " in the background" } else { "" });
         let pid = crate::platform::start_app(&exe, hidden.then_some(HIDE_FOR)).map_err(|err| err.to_string())?;
         if hidden {
-            handle.state::<Started>().0.lock().unwrap_or_else(|e| e.into_inner()).push(pid);
+            handle.state::<Background>().add(pid);
         }
         Ok("started")
     })
@@ -165,10 +175,46 @@ pub async fn widget_app_show(app: AppHandle, widget_id: String, app_id: String) 
     .map_err(|err| err.to_string())
 }
 
-/// When Lizun quits, programs it started in the background that are still hidden are asked to
-/// close, so nothing keeps running unseen.
-pub fn close_started<R: Runtime>(app: &AppHandle<R>) {
-    let pids = std::mem::take(&mut *app.state::<Started>().0.lock().unwrap_or_else(|e| e.into_inner()));
+/// Puts the running program in the background: hides its windows until `widget_app_show` or
+/// until it is started again from its shortcut. False when it is not running or has no window.
+#[tauri::command]
+pub async fn widget_app_hide(app: AppHandle, widget_id: String, app_id: String) -> Result<bool, String> {
+    let spec = spec_of(&app, &widget_id, &app_id)?;
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(exe) = locate(&spec) else { return false };
+        let Some(pid) = crate::platform::find_process(&exe) else { return false };
+        let hidden = crate::platform::hide_app(pid, &exe);
+        if hidden {
+            log::info!("put {} in the background for {widget_id}", exe.display());
+            handle.state::<Background>().add(pid);
+        }
+        hidden
+    })
+    .await
+    .map_err(|err| err.to_string())
+}
+
+/// Whether the program runs, and whether its window is shown: `notRunning`, `hidden` or
+/// `shown`.
+#[tauri::command]
+pub async fn widget_app_state(app: AppHandle, widget_id: String, app_id: String) -> Result<&'static str, String> {
+    let spec = spec_of(&app, &widget_id, &app_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        match locate(&spec).and_then(|exe| crate::platform::find_process(&exe)) {
+            None => "notRunning",
+            Some(pid) if crate::platform::app_shown(pid) => "shown",
+            Some(_) => "hidden",
+        }
+    })
+    .await
+    .map_err(|err| err.to_string())
+}
+
+/// When Lizun quits, programs it started in or put in the background that are still hidden are
+/// asked to close, so nothing keeps running unseen.
+pub fn close_background<R: Runtime>(app: &AppHandle<R>) {
+    let pids = std::mem::take(&mut *app.state::<Background>().0.lock().unwrap_or_else(|e| e.into_inner()));
     for pid in pids {
         if crate::platform::close_app_if_hidden(pid) {
             log::info!("asked the background app {pid} to close");

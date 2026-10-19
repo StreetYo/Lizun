@@ -1,12 +1,13 @@
 //! Starting a program for a widget, optionally in the background: its windows are hidden as
 //! they appear during the first moments, so it runs without a window or a taskbar button until
-//! it is shown (see `widget_apps.rs`).
+//! it is shown. A running program can be put in the background and shown again; while it is
+//! there, starting it again (from its shortcut, say) shows it (see `widget_apps.rs`).
 
 use std::collections::HashMap;
 use std::io;
-use std::path::Path;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, WAIT_TIMEOUT, WPARAM};
@@ -20,7 +21,7 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_OBJECT_SHOW, EnumWindows, GA_ROOT, GW_OWNER, GWL_EXSTYLE, GWL_STYLE, GetAncestor, GetMessageW, GetWindow,
+    EVENT_OBJECT_SHOW, EnumWindows, GA_ROOT, GA_ROOTOWNER, GW_OWNER, GWL_EXSTYLE, GWL_STYLE, GetAncestor, GetMessageW, GetWindow,
     GetWindowLongPtrW, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, MSG, PostMessageW,
     PostThreadMessageW, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SetForegroundWindow, SetTimer, ShowWindow,
     WINEVENT_OUTOFCONTEXT, WM_CLOSE, WM_QUIT, WM_TIMER, WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_SYSMENU,
@@ -36,25 +37,45 @@ fn with_hiding<T>(f: impl FnOnce(&mut HashMap<u32, u32>) -> T) -> T {
     f(hiding.get_or_insert_with(HashMap::new))
 }
 
+/// Programs in the background that are shown when started again, by process id.
+static WATCHING: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+/// Windows `hide_app` hid besides the main ones, such as an open dialog: process id and window.
+static HIDDEN_DIALOGS: Mutex<Vec<(u32, isize)>> = Mutex::new(Vec::new());
+/// How often a program in the background is checked for being started again.
+const REOPEN_CHECK: Duration = Duration::from_millis(200);
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// The id of a running process started from `exe`, if any.
 pub fn find_process(exe: &Path) -> Option<u32> {
+    processes_of(exe).into_iter().next()
+}
+
+/// The running processes started from `exe`. Only processes with its file name are opened to
+/// compare the whole path, so this is cheap enough to run a few times a second.
+fn processes_of(exe: &Path) -> Vec<u32> {
     let wanted = exe.to_string_lossy().to_lowercase();
+    let file_name = exe.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+    let mut found = Vec::new();
     // SAFETY: the snapshot handle is closed below; the entry is a valid, sized structure.
     unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return found };
         let mut entry = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
-        let mut found = None;
         let mut more = Process32FirstW(snapshot, &mut entry).is_ok();
         while more {
-            if image_path(entry.th32ProcessID).is_some_and(|path| path.to_lowercase() == wanted) {
-                found = Some(entry.th32ProcessID);
-                break;
+            let length = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+            if String::from_utf16_lossy(&entry.szExeFile[..length]).to_lowercase() == file_name
+                && image_path(entry.th32ProcessID).is_some_and(|path| path.to_lowercase() == wanted)
+            {
+                found.push(entry.th32ProcessID);
             }
             more = Process32NextW(snapshot, &mut entry).is_ok();
         }
         let _ = CloseHandle(snapshot);
-        found
     }
+    found
 }
 
 fn image_path(pid: u32) -> Option<String> {
@@ -118,6 +139,7 @@ pub fn start_app(exe: &Path, hide_for: Option<Duration>) -> io::Result<u32> {
         if let Err(err) = start_hiding(pid, duration) {
             log::warn!("cannot hide the windows of {}: {err}", exe.display());
         }
+        watch_for_reopen(pid, exe.to_path_buf());
     }
     // SAFETY: both handles come from CreateProcessW and are closed once.
     unsafe {
@@ -210,14 +232,23 @@ fn stop_hiding(pid: u32) {
     }
 }
 
-/// Shows the program's main windows, restores them if minimized and brings the first to the
-/// front; it is no longer kept in the background. False when it has no main window.
+/// Shows the program's main windows and the dialogs `hide_app` hid, restores them if minimized
+/// and brings them to the front; it is no longer kept in the background. False when it has no
+/// main window.
 pub fn show_app(pid: u32) -> bool {
     stop_hiding(pid);
+    stop_watching(pid);
     let windows = main_windows(pid);
-    // SAFETY: the handles were just enumerated; a window closing meanwhile makes the calls fail.
+    let dialogs: Vec<HWND> = {
+        let mut hidden = lock(&HIDDEN_DIALOGS);
+        let dialogs = hidden.iter().filter(|(owner, _)| *owner == pid).map(|&(_, hwnd)| HWND(hwnd as _)).collect();
+        hidden.retain(|(owner, _)| *owner != pid);
+        dialogs
+    };
+    // SAFETY: the handles were just enumerated or recorded; a window closed meanwhile makes the
+    // calls fail.
     unsafe {
-        for &hwnd in &windows {
+        for &hwnd in windows.iter().chain(&dialogs) {
             if !IsWindowVisible(hwnd).as_bool() {
                 let _ = ShowWindow(hwnd, SW_SHOW);
             }
@@ -225,18 +256,100 @@ pub fn show_app(pid: u32) -> bool {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
             }
         }
-        if let Some(&hwnd) = windows.first() {
-            // Allowed: Lizun received the click that asked for it.
+        // A dialog goes on top of its window, as before it was hidden.
+        if let Some(&hwnd) = dialogs.last().or(windows.first()) {
+            // Allowed when Lizun received the click that asked for it; otherwise Windows flashes
+            // the taskbar button instead.
             let _ = SetForegroundWindow(hwnd);
         }
     }
     !windows.is_empty()
 }
 
+/// Puts the program in the background: hides its main windows and the windows they own, such as
+/// an open dialog, so it has no window or taskbar button until `show_app`, or until it is started
+/// again. False when it has no main window.
+pub fn hide_app(pid: u32, exe: &Path) -> bool {
+    let windows = main_windows(pid);
+    if windows.is_empty() {
+        return false;
+    }
+    let mut dialogs = Vec::new();
+    // SAFETY: the handles were just enumerated; a window closing meanwhile makes the calls fail.
+    unsafe {
+        for hwnd in top_level_windows(pid) {
+            if windows.contains(&hwnd) || !IsWindowVisible(hwnd).as_bool() {
+                continue;
+            }
+            if windows.contains(&GetAncestor(hwnd, GA_ROOTOWNER)) {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+                if is_framed(hwnd) {
+                    dialogs.push((pid, hwnd.0 as isize));
+                }
+            }
+        }
+        for &hwnd in &windows {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+    }
+    let mut hidden = lock(&HIDDEN_DIALOGS);
+    hidden.retain(|(owner, _)| *owner != pid);
+    hidden.extend(dialogs);
+    drop(hidden);
+    watch_for_reopen(pid, exe.to_path_buf());
+    true
+}
+
+/// Whether one of the program's main windows is shown, minimized or not.
+pub fn app_shown(pid: u32) -> bool {
+    // SAFETY: plain queries on window handles that were just enumerated.
+    main_windows(pid).into_iter().any(|hwnd| unsafe { IsWindowVisible(hwnd).as_bool() })
+}
+
+/// While the program is in the background, watches for it being started again, from its shortcut
+/// for example, and shows it then. Anki, like many programs, hands such a start to the running
+/// instance and asks it to raise its window, which does nothing for a window hidden from outside:
+/// the program still takes it for shown. The second instance lives about half a second, so a few
+/// checks a second catch it.
+fn watch_for_reopen(pid: u32, exe: PathBuf) {
+    {
+        let mut watching = lock(&WATCHING);
+        if watching.contains(&pid) {
+            return;
+        }
+        watching.push(pid);
+    }
+    let spawned = std::thread::Builder::new().name("lizun-app-reopen".into()).spawn(move || {
+        loop {
+            std::thread::sleep(REOPEN_CHECK);
+            if !lock(&WATCHING).contains(&pid) {
+                return;
+            }
+            if !is_running(pid) {
+                stop_watching(pid);
+                return;
+            }
+            if processes_of(&exe).into_iter().any(|other| other != pid) {
+                log::info!("{} was started again, showing it", exe.display());
+                show_app(pid);
+                return;
+            }
+        }
+    });
+    if spawned.is_err() {
+        stop_watching(pid);
+    }
+}
+
+fn stop_watching(pid: u32) {
+    lock(&WATCHING).retain(|&watched| watched != pid);
+}
+
 /// Asks a program started in the background to close, the way its close button would, unless
 /// one of its main windows has been shown since. True when it was asked.
 pub fn close_app_if_hidden(pid: u32) -> bool {
     stop_hiding(pid);
+    stop_watching(pid);
     if !is_running(pid) {
         return false;
     }
@@ -260,15 +373,20 @@ fn main_windows(pid: u32) -> Vec<HWND> {
         .filter(|&hwnd| {
             // SAFETY: plain queries on a window handle.
             unsafe {
-                let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
                 let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-                let framed = style & WS_CAPTION.0 == WS_CAPTION.0 && style & WS_SYSMENU.0 != 0;
                 let helper = ex_style & (WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0) != 0;
                 let unowned = GetWindow(hwnd, GW_OWNER).map_or(true, |owner| owner.is_invalid());
-                framed && !helper && unowned && GetWindowTextLengthW(hwnd) > 0
+                is_framed(hwnd) && !helper && unowned && GetWindowTextLengthW(hwnd) > 0
             }
         })
         .collect()
+}
+
+/// A window with a title bar and a window menu, as main windows and dialogs have.
+fn is_framed(hwnd: HWND) -> bool {
+    // SAFETY: a plain query on a window handle.
+    let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
+    style & WS_CAPTION.0 == WS_CAPTION.0 && style & WS_SYSMENU.0 != 0
 }
 
 fn top_level_windows(pid: u32) -> Vec<HWND> {
